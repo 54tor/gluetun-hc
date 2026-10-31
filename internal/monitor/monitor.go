@@ -2,44 +2,13 @@ package monitor
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"net"
-	"strconv"
 	"time"
 
 	"gluetun-hc/internal/config"
-	"gluetun-hc/internal/gluetun"
-	"gluetun-hc/internal/health"
 )
 
-const (
-	pingBinaryMissingExitCode = 127
-	pingTimeoutSeconds        = "3"
-	defaultExecTimeout        = 15 * time.Second
-)
-
-var ErrContainerUnavailable = errors.New("conteneur absent ou arrêté")
-
-type Runtime interface {
-	Exec(operationContext context.Context, container string, command []string) (int, error)
-	Restart(operationContext context.Context, container string) error
-}
-
-type ControlAPI interface {
-	PublicIP(operationContext context.Context) (string, error)
-	ForwardedPort(operationContext context.Context) (int, error)
-}
-
-type Dialer func(operationContext context.Context, address string) error
-
-type target struct {
-	name       string
-	grace      time.Duration
-	outbound   *health.Tracker
-	inbound    *health.Tracker
-	graceUntil time.Time
-}
+const defaultExecTimeout = 15 * time.Second
 
 type Monitor struct {
 	settings              config.Config
@@ -71,99 +40,46 @@ func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, dial Di
 	return monitor
 }
 
-func (monitor *Monitor) newTarget(name string, grace time.Duration) *target {
-	return &target{
-		name:     name,
-		grace:    grace,
-		outbound: health.NewTracker(monitor.settings.FailThreshold, monitor.settings.RiseThreshold),
-		inbound:  health.NewTracker(monitor.settings.FailThreshold, monitor.settings.RiseThreshold),
-	}
-}
-
 func (monitor *Monitor) Tick(operationContext context.Context) {
 	currentTime := monitor.now()
-	if currentTime.Before(monitor.gluetunTarget.graceUntil) {
+	if monitor.isInGrace(monitor.gluetunTarget, currentTime) {
 		return
 	}
-
-	gluetunReachable, gluetunCounted := monitor.pingFrom(operationContext, monitor.gluetunTarget.name)
-	if gluetunCounted {
-		monitor.gluetunTarget.outbound.Record(gluetunReachable)
-	}
-	if !monitor.gluetunTarget.outbound.Healthy() {
-		monitor.logger.Warn("Gluetun n'a plus de connexion, redémarrage", "container", monitor.gluetunTarget.name)
-		monitor.restart(operationContext, monitor.gluetunTarget, currentTime)
-		monitor.watchedRestartPending = true
+	if !monitor.gluetunAllowsChecks(operationContext, currentTime) {
 		return
 	}
-	if gluetunCounted && !gluetunReachable {
-		return
-	}
-
 	if monitor.watchedRestartPending {
-		if !gluetunCounted {
-			return
-		}
-		monitor.logger.Info("Gluetun est revenu, redémarrage des conteneurs surveillés")
-		for _, watched := range monitor.watchedTargets {
-			monitor.restart(operationContext, watched, currentTime)
-		}
-		monitor.watchedRestartPending = false
+		monitor.restartAllWatched(operationContext, currentTime)
 		return
 	}
-
 	for _, watched := range monitor.watchedTargets {
 		monitor.checkWatched(operationContext, watched, currentTime)
 	}
 }
 
-func (monitor *Monitor) checkWatched(operationContext context.Context, watched *target, currentTime time.Time) {
-	if currentTime.Before(watched.graceUntil) {
-		return
-	}
-
-	reachable, counted := monitor.pingFrom(operationContext, watched.name)
+func (monitor *Monitor) gluetunAllowsChecks(operationContext context.Context, currentTime time.Time) bool {
+	reachable, counted := monitor.pingFrom(operationContext, monitor.gluetunTarget.name)
 	if counted {
-		watched.outbound.Record(reachable)
+		monitor.gluetunTarget.outbound.Record(reachable)
 	}
-	if !watched.outbound.Healthy() {
-		monitor.logger.Warn("conteneur sans connexion sortante, redémarrage", "container", watched.name)
-		monitor.restart(operationContext, watched, currentTime)
-		return
+	if !monitor.gluetunTarget.outbound.Healthy() {
+		monitor.logger.Warn("Gluetun n'a plus de connexion, redémarrage", "container", monitor.gluetunTarget.name)
+		monitor.restart(operationContext, monitor.gluetunTarget, currentTime)
+		monitor.watchedRestartPending = true
+		return false
 	}
-
-	if watched.name != monitor.settings.InboundContainer {
-		return
+	if counted && !reachable {
+		return false
 	}
-	monitor.checkInbound(operationContext, watched, currentTime)
+	return counted || !monitor.watchedRestartPending
 }
 
-func (monitor *Monitor) checkInbound(operationContext context.Context, watched *target, currentTime time.Time) {
-	publicIP, ipError := monitor.controlAPI.PublicIP(operationContext)
-	if ipError != nil {
-		monitor.logger.Warn("IP publique indisponible, contrôle entrant sauté", "error", ipError)
-		return
-	}
-	if publicIP == "" {
-		monitor.logger.Warn("IP publique vide, contrôle entrant sauté")
-		return
-	}
-	forwardedPort, portError := monitor.controlAPI.ForwardedPort(operationContext)
-	if errors.Is(portError, gluetun.ErrNoForwardedPort) {
-		return
-	}
-	if portError != nil {
-		monitor.logger.Warn("port forwardé indisponible, contrôle entrant sauté", "error", portError)
-		return
-	}
-
-	address := net.JoinHostPort(publicIP, strconv.Itoa(forwardedPort))
-	dialError := monitor.dial(operationContext, address)
-	watched.inbound.Record(dialError == nil)
-	if !watched.inbound.Healthy() {
-		monitor.logger.Warn("connexion entrante en échec, redémarrage", "container", watched.name, "address", address)
+func (monitor *Monitor) restartAllWatched(operationContext context.Context, currentTime time.Time) {
+	monitor.logger.Info("Gluetun est revenu, redémarrage des conteneurs surveillés")
+	for _, watched := range monitor.watchedTargets {
 		monitor.restart(operationContext, watched, currentTime)
 	}
+	monitor.watchedRestartPending = false
 }
 
 func (monitor *Monitor) restart(operationContext context.Context, restarted *target, currentTime time.Time) {
@@ -173,29 +89,4 @@ func (monitor *Monitor) restart(operationContext context.Context, restarted *tar
 	restarted.outbound.Reset()
 	restarted.inbound.Reset()
 	restarted.graceUntil = currentTime.Add(restarted.grace)
-}
-
-func (monitor *Monitor) pingFrom(operationContext context.Context, container string) (reachable bool, counted bool) {
-	for _, pingTarget := range monitor.settings.PingTargets {
-		execContext, cancelExec := context.WithTimeout(operationContext, monitor.execTimeout)
-		exitCode, execError := monitor.runtime.Exec(execContext, container,
-			[]string{"ping", "-c1", "-W" + pingTimeoutSeconds, pingTarget})
-		cancelExec()
-		if errors.Is(execError, ErrContainerUnavailable) {
-			monitor.logger.Warn("conteneur absent ou arrêté, sonde sautée", "container", container)
-			return false, false
-		}
-		if execError != nil {
-			monitor.logger.Warn("exec impossible", "container", container, "error", execError)
-			return false, true
-		}
-		if exitCode == pingBinaryMissingExitCode {
-			monitor.logger.Error("ping absent de l'image, sonde ignorée", "container", container)
-			return false, false
-		}
-		if exitCode == 0 {
-			return true, true
-		}
-	}
-	return false, true
 }
