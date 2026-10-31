@@ -55,3 +55,7 @@ go test -p 4 ./...
 GLUETUN_HC_INTEGRATION=1 go test -p 4 ./internal/docker/...   # démarre un conteneur alpine jetable
 docker build -t gluetun-hc .
 ```
+
+## Licence
+
+MIT, voir `LICENSE`.
