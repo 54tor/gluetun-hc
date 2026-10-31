@@ -10,12 +10,12 @@ func environmentFrom(values map[string]string) func(string) string {
 }
 
 func TestLoadDefaults(testCase *testing.T) {
-	loaded, err := Load(environmentFrom(map[string]string{
+	loaded, loadError := Load(environmentFrom(map[string]string{
 		"GLUETUN_CONTAINER": "gluetun",
 		"WATCHED":           "app",
 	}))
-	if err != nil {
-		testCase.Fatal(err)
+	if loadError != nil {
+		testCase.Fatal(loadError)
 	}
 	if len(loaded.PingTargets) != 2 || loaded.PingTargets[0] != "9.9.9.9" || loaded.PingTargets[1] != "1.1.1.1" {
 		testCase.Fatalf("cibles de ping inattendues : %v", loaded.PingTargets)
@@ -32,12 +32,12 @@ func TestLoadDefaults(testCase *testing.T) {
 }
 
 func TestLoadPerContainerGrace(testCase *testing.T) {
-	loaded, err := Load(environmentFrom(map[string]string{
+	loaded, loadError := Load(environmentFrom(map[string]string{
 		"GLUETUN_CONTAINER": "gluetun",
 		"WATCHED":           "app:10m,other",
 	}))
-	if err != nil {
-		testCase.Fatal(err)
+	if loadError != nil {
+		testCase.Fatal(loadError)
 	}
 	if loaded.Watched[0].Name != "app" || loaded.Watched[0].Grace != 10*time.Minute {
 		testCase.Fatalf("premier conteneur : %+v", loaded.Watched[0])
@@ -48,25 +48,36 @@ func TestLoadPerContainerGrace(testCase *testing.T) {
 }
 
 func TestLoadRejectsMissingGluetun(testCase *testing.T) {
-	_, err := Load(environmentFrom(map[string]string{"WATCHED": "app"}))
-	if err == nil {
+	_, loadError := Load(environmentFrom(map[string]string{"WATCHED": "app"}))
+	if loadError == nil {
 		testCase.Fatal("erreur attendue")
 	}
 }
 
 func TestLoadRejectsEmptyWatched(testCase *testing.T) {
-	_, err := Load(environmentFrom(map[string]string{"GLUETUN_CONTAINER": "gluetun"}))
-	if err == nil {
+	_, loadError := Load(environmentFrom(map[string]string{"GLUETUN_CONTAINER": "gluetun"}))
+	if loadError == nil {
 		testCase.Fatal("erreur attendue")
 	}
 }
 
 func TestLoadRejectsBadDuration(testCase *testing.T) {
-	_, err := Load(environmentFrom(map[string]string{
+	_, loadError := Load(environmentFrom(map[string]string{
 		"GLUETUN_CONTAINER": "gluetun",
 		"WATCHED":           "app:abc",
 	}))
-	if err == nil {
+	if loadError == nil {
+		testCase.Fatal("erreur attendue")
+	}
+}
+
+func TestLoadRejectsInboundContainerNotWatched(testCase *testing.T) {
+	_, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"INBOUND_CONTAINER": "unknown",
+	}))
+	if loadError == nil {
 		testCase.Fatal("erreur attendue")
 	}
 }

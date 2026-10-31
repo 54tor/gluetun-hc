@@ -21,22 +21,22 @@ func NewClient(baseURL, apiKey string, httpClient *http.Client) *Client {
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, httpClient: httpClient}
 }
 
-func (client *Client) PublicIP(ctx context.Context) (string, error) {
+func (client *Client) PublicIP(requestContext context.Context) (string, error) {
 	var body struct {
 		PublicIP string `json:"public_ip"`
 	}
-	if err := client.getJSON(ctx, "/v1/publicip/ip", &body); err != nil {
-		return "", err
+	if requestError := client.getJSON(requestContext, "/v1/publicip/ip", &body); requestError != nil {
+		return "", requestError
 	}
 	return body.PublicIP, nil
 }
 
-func (client *Client) ForwardedPort(ctx context.Context) (int, error) {
+func (client *Client) ForwardedPort(requestContext context.Context) (int, error) {
 	var body struct {
 		Port int `json:"port"`
 	}
-	if err := client.getJSON(ctx, "/v1/portforward", &body); err != nil {
-		return 0, err
+	if requestError := client.getJSON(requestContext, "/v1/portforward", &body); requestError != nil {
+		return 0, requestError
 	}
 	if body.Port == 0 {
 		return 0, ErrNoForwardedPort
@@ -44,17 +44,17 @@ func (client *Client) ForwardedPort(ctx context.Context) (int, error) {
 	return body.Port, nil
 }
 
-func (client *Client) getJSON(ctx context.Context, path string, destination any) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+path, nil)
-	if err != nil {
-		return err
+func (client *Client) getJSON(requestContext context.Context, path string, destination any) error {
+	request, requestError := http.NewRequestWithContext(requestContext, http.MethodGet, client.baseURL+path, nil)
+	if requestError != nil {
+		return requestError
 	}
 	if client.apiKey != "" {
 		request.Header.Set("X-API-Key", client.apiKey)
 	}
-	response, err := client.httpClient.Do(request)
-	if err != nil {
-		return err
+	response, requestError := client.httpClient.Do(request)
+	if requestError != nil {
+		return requestError
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {

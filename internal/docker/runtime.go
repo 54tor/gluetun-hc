@@ -10,40 +10,40 @@ import (
 const execPollInterval = 200 * time.Millisecond
 
 type Runtime struct {
-	api *client.Client
+	dockerClient *client.Client
 }
 
-func NewRuntime(api *client.Client) *Runtime {
-	return &Runtime{api: api}
+func NewRuntime(dockerClient *client.Client) *Runtime {
+	return &Runtime{dockerClient: dockerClient}
 }
 
-func (runtime *Runtime) Exec(ctx context.Context, container string, command []string) (int, error) {
-	created, err := runtime.api.ExecCreate(ctx, container, client.ExecCreateOptions{Cmd: command})
-	if err != nil {
-		return 0, err
+func (runtime *Runtime) Exec(operationContext context.Context, container string, command []string) (int, error) {
+	created, dockerError := runtime.dockerClient.ExecCreate(operationContext, container, client.ExecCreateOptions{Cmd: command})
+	if dockerError != nil {
+		return 0, dockerError
 	}
-	if _, err := runtime.api.ExecStart(ctx, created.ID, client.ExecStartOptions{Detach: true}); err != nil {
-		return 0, err
+	if _, dockerError := runtime.dockerClient.ExecStart(operationContext, created.ID, client.ExecStartOptions{Detach: true}); dockerError != nil {
+		return 0, dockerError
 	}
 	ticker := time.NewTicker(execPollInterval)
 	defer ticker.Stop()
 	for {
-		inspected, err := runtime.api.ExecInspect(ctx, created.ID, client.ExecInspectOptions{})
-		if err != nil {
-			return 0, err
+		inspected, dockerError := runtime.dockerClient.ExecInspect(operationContext, created.ID, client.ExecInspectOptions{})
+		if dockerError != nil {
+			return 0, dockerError
 		}
 		if !inspected.Running {
 			return inspected.ExitCode, nil
 		}
 		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
+		case <-operationContext.Done():
+			return 0, operationContext.Err()
 		case <-ticker.C:
 		}
 	}
 }
 
-func (runtime *Runtime) Restart(ctx context.Context, container string) error {
-	_, err := runtime.api.ContainerRestart(ctx, container, client.ContainerRestartOptions{})
-	return err
+func (runtime *Runtime) Restart(operationContext context.Context, container string) error {
+	_, dockerError := runtime.dockerClient.ContainerRestart(operationContext, container, client.ContainerRestartOptions{})
+	return dockerError
 }

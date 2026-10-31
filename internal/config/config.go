@@ -44,25 +44,29 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, errors.New("GLUETUN_CONTAINER est obligatoire")
 	}
 
-	var err error
-	defaultGraceDuration, err := durationOrDefault(getenv("GRACE"), defaultGrace)
-	if err != nil {
-		return Config{}, fmt.Errorf("GRACE : %w", err)
+	var parseError error
+	defaultGraceDuration, parseError := durationOrDefault(getenv("GRACE"), defaultGrace)
+	if parseError != nil {
+		return Config{}, fmt.Errorf("GRACE : %w", parseError)
 	}
-	if loaded.GluetunGrace, err = durationOrDefault(getenv("GLUETUN_GRACE"), defaultGraceDuration); err != nil {
-		return Config{}, fmt.Errorf("GLUETUN_GRACE : %w", err)
+	if loaded.GluetunGrace, parseError = durationOrDefault(getenv("GLUETUN_GRACE"), defaultGraceDuration); parseError != nil {
+		return Config{}, fmt.Errorf("GLUETUN_GRACE : %w", parseError)
 	}
-	if loaded.Interval, err = durationOrDefault(getenv("INTERVAL"), defaultInterval); err != nil {
-		return Config{}, fmt.Errorf("INTERVAL : %w", err)
+	if loaded.Interval, parseError = durationOrDefault(getenv("INTERVAL"), defaultInterval); parseError != nil {
+		return Config{}, fmt.Errorf("INTERVAL : %w", parseError)
 	}
-	if loaded.FailThreshold, err = positiveIntOrDefault(getenv("FAIL_THRESHOLD"), defaultThreshold); err != nil {
-		return Config{}, fmt.Errorf("FAIL_THRESHOLD : %w", err)
+	if loaded.FailThreshold, parseError = positiveIntOrDefault(getenv("FAIL_THRESHOLD"), defaultThreshold); parseError != nil {
+		return Config{}, fmt.Errorf("FAIL_THRESHOLD : %w", parseError)
 	}
-	if loaded.RiseThreshold, err = positiveIntOrDefault(getenv("RISE_THRESHOLD"), defaultThreshold); err != nil {
-		return Config{}, fmt.Errorf("RISE_THRESHOLD : %w", err)
+	if loaded.RiseThreshold, parseError = positiveIntOrDefault(getenv("RISE_THRESHOLD"), defaultThreshold); parseError != nil {
+		return Config{}, fmt.Errorf("RISE_THRESHOLD : %w", parseError)
 	}
-	if loaded.Watched, err = parseWatched(getenv("WATCHED"), defaultGraceDuration); err != nil {
-		return Config{}, err
+	if loaded.Watched, parseError = parseWatched(getenv("WATCHED"), defaultGraceDuration); parseError != nil {
+		return Config{}, parseError
+	}
+
+	if loaded.InboundContainer != "" && !isWatched(loaded.Watched, loaded.InboundContainer) {
+		return Config{}, errors.New("INBOUND_CONTAINER doit figurer dans WATCHED")
 	}
 
 	loaded.PingTargets = splitList(valueOrDefault(getenv("PING_TARGETS"), defaultPingTargets))
@@ -76,9 +80,9 @@ func parseWatched(rawList string, defaultGraceDuration time.Duration) ([]Watched
 		name, rawGrace, hasGrace := strings.Cut(entry, ":")
 		grace := defaultGraceDuration
 		if hasGrace {
-			parsedGrace, err := time.ParseDuration(rawGrace)
-			if err != nil {
-				return nil, fmt.Errorf("WATCHED %q : %w", entry, err)
+			parsedGrace, parseError := time.ParseDuration(rawGrace)
+			if parseError != nil {
+				return nil, fmt.Errorf("WATCHED %q : %w", entry, parseError)
 			}
 			grace = parsedGrace
 		}
@@ -88,6 +92,15 @@ func parseWatched(rawList string, defaultGraceDuration time.Duration) ([]Watched
 		return nil, errors.New("WATCHED doit lister au moins un conteneur")
 	}
 	return watched, nil
+}
+
+func isWatched(watched []Watched, name string) bool {
+	for _, candidate := range watched {
+		if candidate.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func splitList(rawList string) []string {
@@ -119,8 +132,8 @@ func positiveIntOrDefault(raw string, fallback int) (int, error) {
 	if raw == "" {
 		return fallback, nil
 	}
-	parsed, err := strconv.Atoi(raw)
-	if err != nil || parsed < 1 {
+	parsed, parseError := strconv.Atoi(raw)
+	if parseError != nil || parsed < 1 {
 		return 0, errors.New("entier strictement positif attendu")
 	}
 	return parsed, nil
