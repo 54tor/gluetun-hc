@@ -7,11 +7,13 @@ import (
 )
 
 const (
-	defaultGrace       = 5 * time.Minute
-	defaultInterval    = 10 * time.Second
-	defaultThreshold   = 3
-	defaultPingTargets = "9.9.9.9,1.1.1.1"
-	defaultControlURL  = "http://gluetun:8000"
+	defaultGrace        = 5 * time.Minute
+	defaultInterval     = 10 * time.Second
+	defaultThreshold    = 3
+	defaultPingTargets  = "9.9.9.9,1.1.1.1"
+	defaultPublicIPFile = "/tmp/gluetun/ip"
+	defaultPortFile     = "/tmp/gluetun/forwarded_port"
+	defaultControlURL   = "http://gluetun:8000"
 )
 
 type Watched struct {
@@ -32,6 +34,8 @@ type Config struct {
 	ControlAPIKey    string
 	ControlUsername  string
 	ControlPassword  string
+	PublicIPFile     string
+	PortFile         string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -83,6 +87,8 @@ func Load(getenv func(string) string) (Config, error) {
 	if len(loaded.PingTargets) == 0 {
 		return Config{}, errors.New("PING_TARGETS doit lister au moins une cible")
 	}
+	loaded.PublicIPFile = valueOrDefault(getenv("GLUETUN_PUBLIC_IP_FILE"), defaultPublicIPFile)
+	loaded.PortFile = valueOrDefault(getenv("GLUETUN_PORT_FILE"), defaultPortFile)
 	loaded.ControlURL = valueOrDefault(getenv("GLUETUN_CONTROL_URL"), defaultControlURL)
 	return loaded, nil
 }

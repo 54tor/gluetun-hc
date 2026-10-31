@@ -38,6 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	dockerRuntime := docker.NewRuntime(dockerClient)
 	controlClient := gluetun.NewClient(settings.ControlURL, gluetun.Credentials{
 		APIKey:   settings.ControlAPIKey,
 		Username: settings.ControlUsername,
@@ -52,7 +53,10 @@ func main() {
 		return connection.Close()
 	}
 
-	runningMonitor := monitor.New(settings, docker.NewRuntime(dockerClient), controlClient, dial, time.Now, logger)
+	fileSource := gluetun.NewFileSource(dockerRuntime, settings.GluetunContainer, settings.PublicIPFile, settings.PortFile)
+	portSource := gluetun.NewFallback(fileSource, controlClient)
+
+	runningMonitor := monitor.New(settings, dockerRuntime, portSource, dial, time.Now, logger)
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

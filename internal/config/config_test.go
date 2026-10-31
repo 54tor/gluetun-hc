@@ -142,3 +142,29 @@ func TestLoadRejectsAPIKeyWithBasicCredentials(testCase *testing.T) {
 		testCase.Fatal("erreur attendue")
 	}
 }
+
+func TestLoadControlFilePathsDefaultsAndOverride(testCase *testing.T) {
+	defaults, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+	}))
+	if loadError != nil {
+		testCase.Fatal(loadError)
+	}
+	if defaults.PublicIPFile != "/tmp/gluetun/ip" || defaults.PortFile != "/tmp/gluetun/forwarded_port" {
+		testCase.Fatalf("défauts : %q %q", defaults.PublicIPFile, defaults.PortFile)
+	}
+
+	overridden, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER":      "gluetun",
+		"WATCHED":                "app",
+		"GLUETUN_PUBLIC_IP_FILE": "/data/ip",
+		"GLUETUN_PORT_FILE":      "/data/port",
+	}))
+	if loadError != nil {
+		testCase.Fatal(loadError)
+	}
+	if overridden.PublicIPFile != "/data/ip" || overridden.PortFile != "/data/port" {
+		testCase.Fatalf("surcharge : %q %q", overridden.PublicIPFile, overridden.PortFile)
+	}
+}

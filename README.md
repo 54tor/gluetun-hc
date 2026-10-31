@@ -30,11 +30,13 @@ Après un redémarrage, la cible n'est plus testée pendant son délai de grâce
 | `FAIL_THRESHOLD` / `RISE_THRESHOLD` | `3` / `3` | Échecs consécutifs avant redémarrage ; pings réussis consécutifs de Gluetun avant de raccrocher les conteneurs |
 | `GRACE` | `5m` | Délai de grâce par défaut après un redémarrage |
 | `GLUETUN_GRACE` | valeur de `GRACE` | Délai de grâce de Gluetun |
+| `GLUETUN_PUBLIC_IP_FILE` | `/tmp/gluetun/ip` | Fichier de l'IP publique, lu dans le conteneur Gluetun |
+| `GLUETUN_PORT_FILE` | `/tmp/gluetun/forwarded_port` | Fichier du port forwardé, lu dans le conteneur Gluetun |
 | `GLUETUN_CONTROL_URL` | `http://gluetun:8000` | API de contrôle de Gluetun |
 | `GLUETUN_API_KEY` | vide | Clé d'API (en-tête `X-API-Key`) |
 | `GLUETUN_USER` / `GLUETUN_PASSWORD` | vides | Authentification basique, exclusive avec la clé d'API |
 
-Le rôle d'authentification de Gluetun doit autoriser `GET /v1/publicip/ip` et `GET /v1/portforward`.
+L'IP publique et le port forwardé sont lus d'abord dans les fichiers de Gluetun (`cat` exécuté dans son conteneur : rien à monter, aucune authentification). Si un fichier manque ou est illisible, le moniteur se rabat sur l'API de contrôle : son rôle d'authentification doit alors autoriser `GET /v1/publicip/ip` et `GET /v1/portforward`. Gluetun annonce la suppression de ces fichiers en v4.
 
 ## Droits Docker
 
@@ -50,5 +52,6 @@ Le moniteur utilise le socket Docker pour lister, exécuter (`exec`) et redémar
 ```bash
 go vet ./...
 go test -p 4 ./...
+GLUETUN_HC_INTEGRATION=1 go test -p 4 ./internal/docker/...   # démarre un conteneur alpine jetable
 docker build -t gluetun-hc .
 ```
