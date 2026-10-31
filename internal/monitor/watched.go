@@ -10,9 +10,9 @@ func (monitor *Monitor) checkWatched(operationContext context.Context, watched *
 		return
 	}
 
-	reachable, counted := monitor.pingFrom(operationContext, watched.name)
-	if counted {
-		watched.outbound.Record(reachable)
+	result := monitor.pingFrom(operationContext, watched.name)
+	if result.isCounted() {
+		watched.outbound.Record(result == probeReachable)
 	}
 	if !watched.outbound.Healthy() {
 		monitor.logger.Warn("conteneur sans connexion sortante, redémarrage", "container", watched.name)

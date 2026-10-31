@@ -22,17 +22,22 @@ type fakeRuntime struct {
 	pingedTargets           []string
 	restartedContainers     []string
 	blockUntilCancelled     bool
+	restartFailuresLeft     map[string]int
 }
 
 func newFakeRuntime() *fakeRuntime {
 	return &fakeRuntime{
 		pingExitCodeByContainer: map[string]int{},
 		pingErrorByContainer:    map[string]error{},
+		restartFailuresLeft:     map[string]int{},
 	}
 }
 
 func (runtime *fakeRuntime) Exec(operationContext context.Context, container string, command []string) (int, error) {
 	runtime.pingedContainers = append(runtime.pingedContainers, container)
+	if operationContext.Err() != nil {
+		return 0, operationContext.Err()
+	}
 	if runtime.blockUntilCancelled {
 		<-operationContext.Done()
 		return 0, operationContext.Err()
@@ -46,6 +51,10 @@ func (runtime *fakeRuntime) Exec(operationContext context.Context, container str
 
 func (runtime *fakeRuntime) Restart(operationContext context.Context, container string) error {
 	runtime.restartedContainers = append(runtime.restartedContainers, container)
+	if runtime.restartFailuresLeft[container] > 0 {
+		runtime.restartFailuresLeft[container]--
+		return errors.New("redémarrage refusé")
+	}
 	return nil
 }
 
@@ -166,6 +175,10 @@ func TestAllWatchedRestartedOnceAfterGluetunRecovers(testCase *testing.T) {
 	bench.runtime.forgetCalls()
 
 	bench.advance(6 * time.Minute)
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("un seul ping réussi ne suffit pas : RISE_THRESHOLD vaut 2")
+	}
 	bench.tick(1)
 	if bench.runtime.restartCount("app") != 1 {
 		testCase.Fatalf("app doit être redémarré une fois : %v", bench.runtime.restartedContainers)
@@ -318,5 +331,98 @@ func TestBlockedExecIsCutByTimeout(testCase *testing.T) {
 	case <-finished:
 	case <-time.After(2 * time.Second):
 		testCase.Fatal("Tick doit rendre la main malgré un exec bloqué")
+	}
+}
+
+func TestCancelledContextNeverCountsAsFailure(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	cancelledContext, cancel := context.WithCancel(context.Background())
+	cancel()
+	for range 5 {
+		bench.monitor.Tick(cancelledContext)
+	}
+	if len(bench.runtime.restartedContainers) != 0 {
+		testCase.Fatalf("un arrêt ne doit déclencher aucun redémarrage : %v", bench.runtime.restartedContainers)
+	}
+}
+
+func TestFailedRestartIsRetriedWithoutGrace(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.runtime.restartFailuresLeft["app"] = 1
+	bench.tick(2)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("première tentative attendue")
+	}
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 2 {
+		testCase.Fatal("un redémarrage raté doit être retenté au contrôle suivant, sans délai de grâce")
+	}
+	bench.runtime.forgetCalls()
+	bench.tick(3)
+	if len(bench.runtime.pingedContainers) != 0 && slices.Contains(bench.runtime.pingedContainers, "app") {
+		testCase.Fatal("après un redémarrage réussi, la grâce s'applique")
+	}
+}
+
+func TestFailedWatchedRestartAfterGluetunIsRetriedForThatContainerOnly(testCase *testing.T) {
+	watched := []config.Watched{
+		{Name: "first", Grace: 5 * time.Minute},
+		{Name: "second", Grace: 5 * time.Minute},
+	}
+	bench := newBench(watched, "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(2)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 0
+	bench.runtime.restartFailuresLeft["first"] = 1
+	bench.advance(6 * time.Minute)
+	bench.tick(2)
+	bench.tick(1)
+	if bench.runtime.restartCount("first") != 2 || bench.runtime.restartCount("second") != 1 {
+		testCase.Fatalf("first doit être retenté seul : %v", bench.runtime.restartedContainers)
+	}
+}
+
+func TestGluetunMissingBlocksWatchedChecks(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingErrorByContainer[gluetunName] = ErrContainerUnavailable
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.tick(5)
+	if slices.Contains(bench.runtime.pingedContainers, "app") || len(bench.runtime.restartedContainers) != 0 {
+		testCase.Fatal("Gluetun absent : aucun contrôle ni redémarrage des conteneurs")
+	}
+}
+
+func TestGluetunWithoutPingStillRejoinsWatched(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(2)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 127
+	bench.advance(6 * time.Minute)
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("sans ping dans Gluetun, la preuve est impossible : on raccroche quand même")
+	}
+}
+
+func TestGluetunFlapResetsRiseStreak(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(2)
+	bench.advance(6 * time.Minute)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 0
+	bench.tick(1)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(1)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 0
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("un rebond du tunnel remet la série à zéro")
+	}
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("deux succès consécutifs doivent déclencher le raccrochage")
 	}
 }

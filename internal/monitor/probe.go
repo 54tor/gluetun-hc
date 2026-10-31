@@ -10,26 +10,42 @@ const (
 	pingTimeoutSeconds        = "3"
 )
 
-func (monitor *Monitor) pingFrom(operationContext context.Context, container string) (reachable bool, counted bool) {
+type probeResult int
+
+const (
+	probeReachable probeResult = iota
+	probeUnreachable
+	probeSkipped
+	probeUnsupported
+)
+
+func (result probeResult) isCounted() bool {
+	return result == probeReachable || result == probeUnreachable
+}
+
+func (monitor *Monitor) pingFrom(operationContext context.Context, container string) probeResult {
 	for _, pingTarget := range monitor.settings.PingTargets {
 		exitCode, execError := monitor.execPing(operationContext, container, pingTarget)
+		if operationContext.Err() != nil {
+			return probeSkipped
+		}
 		if errors.Is(execError, ErrContainerUnavailable) {
 			monitor.logger.Warn("conteneur absent ou arrêté, sonde sautée", "container", container)
-			return false, false
+			return probeSkipped
 		}
 		if execError != nil {
 			monitor.logger.Warn("exec impossible", "container", container, "error", execError)
-			return false, true
+			return probeUnreachable
 		}
 		if exitCode == pingBinaryMissingExitCode {
 			monitor.logger.Error("ping absent de l'image, sonde ignorée", "container", container)
-			return false, false
+			return probeUnsupported
 		}
 		if exitCode == 0 {
-			return true, true
+			return probeReachable
 		}
 	}
-	return false, true
+	return probeUnreachable
 }
 
 func (monitor *Monitor) execPing(operationContext context.Context, container, pingTarget string) (int, error) {

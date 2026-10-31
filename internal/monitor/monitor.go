@@ -11,16 +11,15 @@ import (
 const defaultExecTimeout = 15 * time.Second
 
 type Monitor struct {
-	settings              config.Config
-	runtime               Runtime
-	controlAPI            ControlAPI
-	dial                  Dialer
-	now                   func() time.Time
-	logger                *slog.Logger
-	gluetunTarget         *target
-	watchedTargets        []*target
-	watchedRestartPending bool
-	execTimeout           time.Duration
+	settings       config.Config
+	runtime        Runtime
+	controlAPI     ControlAPI
+	dial           Dialer
+	now            func() time.Time
+	logger         *slog.Logger
+	gluetunTarget  *target
+	watchedTargets []*target
+	execTimeout    time.Duration
 }
 
 func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, dial Dialer, now func() time.Time, logger *slog.Logger) *Monitor {
@@ -45,11 +44,12 @@ func (monitor *Monitor) Tick(operationContext context.Context) {
 	if monitor.isInGrace(monitor.gluetunTarget, currentTime) {
 		return
 	}
-	if !monitor.gluetunAllowsChecks(operationContext, currentTime) {
+	result := monitor.pingFrom(operationContext, monitor.gluetunTarget.name)
+	if !monitor.gluetunAllowsChecks(operationContext, result, currentTime) {
 		return
 	}
-	if monitor.watchedRestartPending {
-		monitor.restartAllWatched(operationContext, currentTime)
+	if monitor.hasWatchedToRejoin() {
+		monitor.rejoinWatched(operationContext, result, currentTime)
 		return
 	}
 	for _, watched := range monitor.watchedTargets {
@@ -57,36 +57,56 @@ func (monitor *Monitor) Tick(operationContext context.Context) {
 	}
 }
 
-func (monitor *Monitor) gluetunAllowsChecks(operationContext context.Context, currentTime time.Time) bool {
-	reachable, counted := monitor.pingFrom(operationContext, monitor.gluetunTarget.name)
-	if counted {
-		monitor.gluetunTarget.outbound.Record(reachable)
+func (monitor *Monitor) gluetunAllowsChecks(operationContext context.Context, result probeResult, currentTime time.Time) bool {
+	if result.isCounted() {
+		monitor.gluetunTarget.outbound.Record(result == probeReachable)
 	}
 	if !monitor.gluetunTarget.outbound.Healthy() {
 		monitor.logger.Warn("Gluetun n'a plus de connexion, redémarrage", "container", monitor.gluetunTarget.name)
-		monitor.restart(operationContext, monitor.gluetunTarget, currentTime)
-		monitor.watchedRestartPending = true
+		if monitor.restart(operationContext, monitor.gluetunTarget, currentTime) {
+			monitor.markWatchedToRejoin()
+		}
 		return false
 	}
-	if counted && !reachable {
-		return false
-	}
-	return counted || !monitor.watchedRestartPending
+	return result == probeReachable || result == probeUnsupported
 }
 
-func (monitor *Monitor) restartAllWatched(operationContext context.Context, currentTime time.Time) {
-	monitor.logger.Info("Gluetun est revenu, redémarrage des conteneurs surveillés")
+func (monitor *Monitor) markWatchedToRejoin() {
 	for _, watched := range monitor.watchedTargets {
-		monitor.restart(operationContext, watched, currentTime)
+		watched.needsRejoin = true
 	}
-	monitor.watchedRestartPending = false
 }
 
-func (monitor *Monitor) restart(operationContext context.Context, restarted *target, currentTime time.Time) {
+func (monitor *Monitor) hasWatchedToRejoin() bool {
+	for _, watched := range monitor.watchedTargets {
+		if watched.needsRejoin {
+			return true
+		}
+	}
+	return false
+}
+
+func (monitor *Monitor) rejoinWatched(operationContext context.Context, gluetunResult probeResult, currentTime time.Time) {
+	tunnelIsStable := gluetunResult == probeUnsupported ||
+		monitor.gluetunTarget.outbound.ConsecutiveSuccesses() >= monitor.settings.RiseThreshold
+	if !tunnelIsStable {
+		return
+	}
+	monitor.logger.Info("Gluetun est stable, redémarrage des conteneurs surveillés")
+	for _, watched := range monitor.watchedTargets {
+		if watched.needsRejoin && monitor.restart(operationContext, watched, currentTime) {
+			watched.needsRejoin = false
+		}
+	}
+}
+
+func (monitor *Monitor) restart(operationContext context.Context, restarted *target, currentTime time.Time) bool {
 	if restartError := monitor.runtime.Restart(operationContext, restarted.name); restartError != nil {
-		monitor.logger.Error("redémarrage impossible", "container", restarted.name, "error", restartError)
+		monitor.logger.Error("redémarrage impossible, nouvelle tentative au prochain contrôle", "container", restarted.name, "error", restartError)
+		return false
 	}
 	restarted.outbound.Reset()
 	restarted.inbound.Reset()
 	restarted.graceUntil = currentTime.Add(restarted.grace)
+	return true
 }

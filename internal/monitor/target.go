@@ -7,11 +7,12 @@ import (
 )
 
 type target struct {
-	name       string
-	grace      time.Duration
-	outbound   *health.Tracker
-	inbound    *health.Tracker
-	graceUntil time.Time
+	name        string
+	grace       time.Duration
+	outbound    *health.Tracker
+	inbound     *health.Tracker
+	graceUntil  time.Time
+	needsRejoin bool
 }
 
 func (monitor *Monitor) newTarget(name string, grace time.Duration) *target {

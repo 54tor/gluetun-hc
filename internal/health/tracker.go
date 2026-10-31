@@ -37,3 +37,7 @@ func (tracker *Tracker) Reset() {
 	tracker.consecutiveSuccess = 0
 	tracker.healthy = true
 }
+
+func (tracker *Tracker) ConsecutiveSuccesses() int {
+	return tracker.consecutiveSuccess
+}

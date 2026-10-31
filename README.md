@@ -10,7 +10,7 @@ Quand Gluetun redémarre ou que son tunnel WireGuard tombe, les conteneurs qui p
 
 À chaque intervalle :
 
-1. **Gluetun** : `ping` exécuté dans le conteneur Gluetun. Après `FAIL_THRESHOLD` échecs consécutifs, Gluetun est redémarré. Quand il répond de nouveau (après son délai de grâce), tous les conteneurs surveillés sont redémarrés une fois.
+1. **Gluetun** : `ping` exécuté dans le conteneur Gluetun. Après `FAIL_THRESHOLD` échecs consécutifs, Gluetun est redémarré. Quand il répond `RISE_THRESHOLD` fois de suite (après son délai de grâce), tous les conteneurs surveillés sont redémarrés une fois ; un redémarrage refusé est retenté au contrôle suivant. Tant que Gluetun est absent ou arrêté, rien n'est contrôlé ni redémarré.
 2. **Conteneurs** : `ping` exécuté dans chaque conteneur surveillé (sortant), seulement si Gluetun répond.
 3. **Entrant** (facultatif) : connexion TCP vers `IP publique:port forwardé` de Gluetun. En cas d'échec, `INBOUND_CONTAINER` est redémarré. Sans port forwardé ou API de contrôle injoignable, le contrôle est sauté.
 
@@ -25,7 +25,7 @@ Après un redémarrage, la cible n'est plus testée pendant son délai de grâce
 | `INBOUND_CONTAINER` | vide | Conteneur qui écoute sur le port forwardé (doit figurer dans `WATCHED`) |
 | `PING_TARGETS` | `9.9.9.9,1.1.1.1` | Cibles de ping, un succès suffit |
 | `INTERVAL` | `10s` | Intervalle entre deux contrôles |
-| `FAIL_THRESHOLD` / `RISE_THRESHOLD` | `3` / `3` | Échecs consécutifs avant panne, succès consécutifs avant rétablissement |
+| `FAIL_THRESHOLD` / `RISE_THRESHOLD` | `3` / `3` | Échecs consécutifs avant redémarrage ; pings réussis consécutifs de Gluetun avant de raccrocher les conteneurs |
 | `GRACE` | `5m` | Délai de grâce par défaut après un redémarrage |
 | `GLUETUN_GRACE` | valeur de `GRACE` | Délai de grâce de Gluetun |
 | `GLUETUN_CONTROL_URL` | `http://gluetun:8000` | API de contrôle de Gluetun |

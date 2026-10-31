@@ -52,3 +52,15 @@ func TestResetRestoresHealthy(testCase *testing.T) {
 		testCase.Fatal("Reset doit rétablir l'état sain")
 	}
 }
+
+func TestConsecutiveSuccessesCountsAndResets(testCase *testing.T) {
+	tracker := NewTracker(3, 3)
+	recordAll(tracker, true, true)
+	if tracker.ConsecutiveSuccesses() != 2 {
+		testCase.Fatalf("série : %d", tracker.ConsecutiveSuccesses())
+	}
+	tracker.Record(false)
+	if tracker.ConsecutiveSuccesses() != 0 {
+		testCase.Fatal("un échec remet la série à zéro")
+	}
+}
