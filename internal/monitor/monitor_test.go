@@ -1,0 +1,288 @@
+package monitor
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"slices"
+	"testing"
+	"time"
+
+	"gluetun-hc/internal/config"
+	"gluetun-hc/internal/gluetun"
+)
+
+const gluetunName = "gluetun"
+
+type fakeRuntime struct {
+	pingExitCodeByContainer map[string]int
+	pingErrorByContainer    map[string]error
+	pingedContainers        []string
+	pingedTargets           []string
+	restartedContainers     []string
+}
+
+func newFakeRuntime() *fakeRuntime {
+	return &fakeRuntime{
+		pingExitCodeByContainer: map[string]int{},
+		pingErrorByContainer:    map[string]error{},
+	}
+}
+
+func (runtime *fakeRuntime) Exec(operationContext context.Context, container string, command []string) (int, error) {
+	runtime.pingedContainers = append(runtime.pingedContainers, container)
+	runtime.pingedTargets = append(runtime.pingedTargets, command[len(command)-1])
+	if pingError := runtime.pingErrorByContainer[container]; pingError != nil {
+		return 0, pingError
+	}
+	return runtime.pingExitCodeByContainer[container], nil
+}
+
+func (runtime *fakeRuntime) Restart(operationContext context.Context, container string) error {
+	runtime.restartedContainers = append(runtime.restartedContainers, container)
+	return nil
+}
+
+func (runtime *fakeRuntime) forgetCalls() {
+	runtime.pingedContainers = nil
+	runtime.pingedTargets = nil
+	runtime.restartedContainers = nil
+}
+
+func (runtime *fakeRuntime) restartCount(container string) int {
+	count := 0
+	for _, restarted := range runtime.restartedContainers {
+		if restarted == container {
+			count++
+		}
+	}
+	return count
+}
+
+type fakeControlAPI struct {
+	publicIP      string
+	forwardedPort int
+	portError     error
+	ipError       error
+}
+
+func (controlAPI *fakeControlAPI) PublicIP(operationContext context.Context) (string, error) {
+	return controlAPI.publicIP, controlAPI.ipError
+}
+
+func (controlAPI *fakeControlAPI) ForwardedPort(operationContext context.Context) (int, error) {
+	return controlAPI.forwardedPort, controlAPI.portError
+}
+
+type testBench struct {
+	runtime       *fakeRuntime
+	controlAPI    *fakeControlAPI
+	monitor       *Monitor
+	currentTime   time.Time
+	dialedAddress []string
+	dialError     error
+}
+
+func newBench(watched []config.Watched, inboundContainer string) *testBench {
+	bench := &testBench{
+		runtime:     newFakeRuntime(),
+		controlAPI:  &fakeControlAPI{publicIP: "203.0.113.7", forwardedPort: 5914},
+		currentTime: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC),
+	}
+	settings := config.Config{
+		GluetunContainer: gluetunName,
+		GluetunGrace:     5 * time.Minute,
+		Watched:          watched,
+		InboundContainer: inboundContainer,
+		PingTargets:      []string{"9.9.9.9", "1.1.1.1"},
+		FailThreshold:    2,
+		RiseThreshold:    2,
+	}
+	dial := func(operationContext context.Context, address string) error {
+		bench.dialedAddress = append(bench.dialedAddress, address)
+		return bench.dialError
+	}
+	bench.monitor = New(settings, bench.runtime, bench.controlAPI, dial,
+		func() time.Time { return bench.currentTime },
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return bench
+}
+
+func (bench *testBench) tick(times int) {
+	for range times {
+		bench.monitor.Tick(context.Background())
+	}
+}
+
+func (bench *testBench) advance(duration time.Duration) {
+	bench.currentTime = bench.currentTime.Add(duration)
+}
+
+func singleApp() []config.Watched {
+	return []config.Watched{{Name: "app", Grace: 5 * time.Minute}}
+}
+
+func TestHealthyEverythingNoRestart(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.tick(5)
+	if len(bench.runtime.restartedContainers) != 0 {
+		testCase.Fatalf("redémarrages inattendus : %v", bench.runtime.restartedContainers)
+	}
+}
+
+func TestGluetunRestartedAfterFailThreshold(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(1)
+	if bench.runtime.restartCount(gluetunName) != 0 {
+		testCase.Fatal("redémarrage trop tôt")
+	}
+	bench.tick(1)
+	if bench.runtime.restartCount(gluetunName) != 1 {
+		testCase.Fatal("Gluetun aurait dû être redémarré")
+	}
+}
+
+func TestContainersSkippedWhileGluetunFaulty(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(2)
+	if slices.Contains(bench.runtime.pingedContainers, "app") {
+		testCase.Fatal("aucun ping ne doit partir des conteneurs quand Gluetun est en panne")
+	}
+}
+
+func TestAllWatchedRestartedOnceAfterGluetunRecovers(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(2)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 0
+	bench.runtime.forgetCalls()
+
+	bench.advance(6 * time.Minute)
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatalf("app doit être redémarré une fois : %v", bench.runtime.restartedContainers)
+	}
+	bench.tick(3)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("app ne doit pas être redémarré une seconde fois")
+	}
+}
+
+func TestGraceSuppressesChecks(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.tick(2)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("app aurait dû être redémarré")
+	}
+	bench.runtime.forgetCalls()
+
+	bench.advance(4 * time.Minute)
+	bench.tick(3)
+	if slices.Contains(bench.runtime.pingedContainers, "app") {
+		testCase.Fatal("app ne doit pas être testé pendant sa grâce")
+	}
+	bench.advance(2 * time.Minute)
+	bench.tick(1)
+	if !slices.Contains(bench.runtime.pingedContainers, "app") {
+		testCase.Fatal("app doit être testé après sa grâce")
+	}
+}
+
+func TestPerContainerGrace(testCase *testing.T) {
+	watched := []config.Watched{
+		{Name: "slow", Grace: 10 * time.Minute},
+		{Name: "quick", Grace: 5 * time.Minute},
+	}
+	bench := newBench(watched, "")
+	bench.runtime.pingExitCodeByContainer["slow"] = 1
+	bench.runtime.pingExitCodeByContainer["quick"] = 1
+	bench.tick(2)
+	bench.runtime.forgetCalls()
+
+	bench.advance(6 * time.Minute)
+	bench.tick(1)
+	if !slices.Contains(bench.runtime.pingedContainers, "quick") || slices.Contains(bench.runtime.pingedContainers, "slow") {
+		testCase.Fatalf("après 6 min, seul quick est testé : %v", bench.runtime.pingedContainers)
+	}
+}
+
+func TestContainerRestartedAfterFailThreshold(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("redémarrage trop tôt")
+	}
+	bench.tick(1)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("app aurait dû être redémarré")
+	}
+}
+
+func TestPingMissingBinaryIsNotCounted(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 127
+	bench.tick(5)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("un ping absent n'est pas une panne réseau")
+	}
+}
+
+func TestSecondPingTargetUsedWhenFirstFails(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.tick(1)
+	if !slices.Contains(bench.runtime.pingedTargets, "9.9.9.9") || !slices.Contains(bench.runtime.pingedTargets, "1.1.1.1") {
+		testCase.Fatalf("les deux cibles doivent être tentées : %v", bench.runtime.pingedTargets)
+	}
+}
+
+func TestInboundFailureRestartsInboundContainer(testCase *testing.T) {
+	bench := newBench(singleApp(), "app")
+	bench.dialError = errors.New("connexion refusée")
+	bench.tick(2)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("app aurait dû être redémarré après échecs entrants")
+	}
+	if len(bench.dialedAddress) == 0 || bench.dialedAddress[0] != "203.0.113.7:5914" {
+		testCase.Fatalf("adresse testée : %v", bench.dialedAddress)
+	}
+}
+
+func TestInboundSkippedWhenNoForwardedPort(testCase *testing.T) {
+	bench := newBench(singleApp(), "app")
+	bench.controlAPI.portError = gluetun.ErrNoForwardedPort
+	bench.dialError = errors.New("connexion refusée")
+	bench.tick(5)
+	if len(bench.dialedAddress) != 0 || bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("sans port forwardé, le contrôle entrant est sauté")
+	}
+}
+
+func TestInboundSkippedWhenControlAPIDown(testCase *testing.T) {
+	bench := newBench(singleApp(), "app")
+	bench.controlAPI.ipError = errors.New("API injoignable")
+	bench.dialError = errors.New("connexion refusée")
+	bench.tick(5)
+	if len(bench.dialedAddress) != 0 || bench.runtime.restartCount("app") != 0 || bench.runtime.restartCount(gluetunName) != 0 {
+		testCase.Fatal("une API de contrôle injoignable ne déclenche aucun redémarrage")
+	}
+}
+
+func TestMissingContainerLoggedNotFatal(testCase *testing.T) {
+	watched := []config.Watched{
+		{Name: "missing", Grace: 5 * time.Minute},
+		{Name: "app", Grace: 5 * time.Minute},
+	}
+	bench := newBench(watched, "")
+	bench.runtime.pingErrorByContainer["missing"] = errors.New("conteneur absent")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.tick(2)
+	if bench.runtime.restartCount("app") != 1 {
+		testCase.Fatal("app doit être contrôlé même si un autre conteneur est absent")
+	}
+}
