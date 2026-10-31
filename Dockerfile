@@ -1,9 +1,11 @@
-FROM golang:latest AS build
+FROM --platform=$BUILDPLATFORM golang:latest AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /gluetun-hc ./cmd/gluetun-hc
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /gluetun-hc ./cmd/gluetun-hc
 
 FROM scratch
 COPY --from=build /gluetun-hc /gluetun-hc

@@ -38,6 +38,10 @@ Après un redémarrage, la cible n'est plus testée pendant son délai de grâce
 
 L'IP publique et le port forwardé sont lus d'abord dans les fichiers de Gluetun (`cat` exécuté dans son conteneur : rien à monter, aucune authentification). Si un fichier manque ou est illisible, le moniteur se rabat sur l'API de contrôle : son rôle d'authentification doit alors autoriser `GET /v1/publicip/ip` et `GET /v1/portforward`. Gluetun annonce la suppression de ces fichiers en v4.
 
+## Intégration continue
+
+`.github/workflows/ci.yml` lance `go vet` et `go test` à chaque push et pull request, puis construit l'image en `linux/amd64` et `linux/arm64`. Hors pull request, l'image est publiée sur `ghcr.io/<propriétaire>/gluetun-hc` : `latest` sur `main`, la version sur un tag `v*`, et le SHA du commit.
+
 ## Droits Docker
 
 Le moniteur utilise l'API Docker pour inspecter, exécuter (`exec`) et redémarrer des conteneurs. Il lit `DOCKER_HOST` : l'exemple `compose.yaml` passe par un proxy de socket (`wollomatic/socket-proxy`) qui n'autorise que ces appels, et uniquement sur Gluetun et les conteneurs surveillés. Un accès direct au socket équivaut à un accès root à l'hôte.
