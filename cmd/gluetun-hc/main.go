@@ -38,7 +38,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	controlClient := gluetun.NewClient(settings.ControlURL, settings.ControlAPIKey, &http.Client{Timeout: controlAPITimeout})
+	controlClient := gluetun.NewClient(settings.ControlURL, gluetun.Credentials{
+		APIKey:   settings.ControlAPIKey,
+		Username: settings.ControlUsername,
+		Password: settings.ControlPassword,
+	}, &http.Client{Timeout: controlAPITimeout})
 	dialer := net.Dialer{Timeout: inboundDialTimeout}
 	dial := func(operationContext context.Context, address string) error {
 		connection, dialError := dialer.DialContext(operationContext, "tcp", address)

@@ -103,3 +103,42 @@ func TestLoadRejectsEmptyPingTargets(testCase *testing.T) {
 		testCase.Fatal("erreur attendue")
 	}
 }
+
+func TestLoadReadsControlCredentials(testCase *testing.T) {
+	loaded, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"GLUETUN_USER":      "monitor",
+		"GLUETUN_PASSWORD":  "s3cret",
+	}))
+	if loadError != nil {
+		testCase.Fatal(loadError)
+	}
+	if loaded.ControlUsername != "monitor" || loaded.ControlPassword != "s3cret" {
+		testCase.Fatalf("identifiants : %q %q", loaded.ControlUsername, loaded.ControlPassword)
+	}
+}
+
+func TestLoadRejectsUsernameWithoutPassword(testCase *testing.T) {
+	_, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"GLUETUN_USER":      "monitor",
+	}))
+	if loadError == nil {
+		testCase.Fatal("erreur attendue")
+	}
+}
+
+func TestLoadRejectsAPIKeyWithBasicCredentials(testCase *testing.T) {
+	_, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"GLUETUN_API_KEY":   "key",
+		"GLUETUN_USER":      "monitor",
+		"GLUETUN_PASSWORD":  "s3cret",
+	}))
+	if loadError == nil {
+		testCase.Fatal("erreur attendue")
+	}
+}

@@ -27,7 +27,7 @@ func serverReplying(testCase *testing.T, routes map[string]string) *httptest.Ser
 
 func TestPublicIPParsesBody(testCase *testing.T) {
 	server := serverReplying(testCase, map[string]string{"/v1/publicip/ip": `{"public_ip":"203.0.113.7"}`})
-	publicIP, callError := NewClient(server.URL, "secret", server.Client()).PublicIP(context.Background())
+	publicIP, callError := NewClient(server.URL, Credentials{APIKey: "secret"}, server.Client()).PublicIP(context.Background())
 	if callError != nil || publicIP != "203.0.113.7" {
 		testCase.Fatalf("IP %q, erreur %v", publicIP, callError)
 	}
@@ -35,7 +35,7 @@ func TestPublicIPParsesBody(testCase *testing.T) {
 
 func TestForwardedPortParsesBody(testCase *testing.T) {
 	server := serverReplying(testCase, map[string]string{"/v1/portforward": `{"port":5914}`})
-	port, callError := NewClient(server.URL, "secret", server.Client()).ForwardedPort(context.Background())
+	port, callError := NewClient(server.URL, Credentials{APIKey: "secret"}, server.Client()).ForwardedPort(context.Background())
 	if callError != nil || port != 5914 {
 		testCase.Fatalf("port %d, erreur %v", port, callError)
 	}
@@ -43,7 +43,7 @@ func TestForwardedPortParsesBody(testCase *testing.T) {
 
 func TestForwardedPortZeroReturnsErrNoForwardedPort(testCase *testing.T) {
 	server := serverReplying(testCase, map[string]string{"/v1/portforward": `{"port":0}`})
-	_, callError := NewClient(server.URL, "secret", server.Client()).ForwardedPort(context.Background())
+	_, callError := NewClient(server.URL, Credentials{APIKey: "secret"}, server.Client()).ForwardedPort(context.Background())
 	if !errors.Is(callError, ErrNoForwardedPort) {
 		testCase.Fatalf("erreur inattendue : %v", callError)
 	}
@@ -51,7 +51,7 @@ func TestForwardedPortZeroReturnsErrNoForwardedPort(testCase *testing.T) {
 
 func TestAPIKeySent(testCase *testing.T) {
 	server := serverReplying(testCase, map[string]string{"/v1/publicip/ip": `{"public_ip":"203.0.113.7"}`})
-	_, callError := NewClient(server.URL, "wrong", server.Client()).PublicIP(context.Background())
+	_, callError := NewClient(server.URL, Credentials{APIKey: "wrong"}, server.Client()).PublicIP(context.Background())
 	if callError == nil {
 		testCase.Fatal("une clé erronée doit échouer")
 	}
@@ -59,8 +59,43 @@ func TestAPIKeySent(testCase *testing.T) {
 
 func TestNon200ReturnsError(testCase *testing.T) {
 	server := serverReplying(testCase, map[string]string{})
-	_, callError := NewClient(server.URL, "secret", server.Client()).PublicIP(context.Background())
+	_, callError := NewClient(server.URL, Credentials{APIKey: "secret"}, server.Client()).PublicIP(context.Background())
 	if callError == nil {
 		testCase.Fatal("erreur attendue")
+	}
+}
+
+func TestBasicAuthSent(testCase *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		username, password, provided := request.BasicAuth()
+		if !provided || username != "monitor" || password != "s3cret" {
+			writer.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		writer.Write([]byte(`{"port":5914}`))
+	}))
+	testCase.Cleanup(server.Close)
+
+	credentials := Credentials{Username: "monitor", Password: "s3cret"}
+	port, callError := NewClient(server.URL, credentials, server.Client()).ForwardedPort(context.Background())
+	if callError != nil || port != 5914 {
+		testCase.Fatalf("port %d, erreur %v", port, callError)
+	}
+}
+
+func TestNoCredentialsSendsNoAuthentication(testCase *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _, hasBasic := request.BasicAuth()
+		if hasBasic || request.Header.Get("X-API-Key") != "" {
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		writer.Write([]byte(`{"public_ip":"203.0.113.7"}`))
+	}))
+	testCase.Cleanup(server.Close)
+
+	_, callError := NewClient(server.URL, Credentials{}, server.Client()).PublicIP(context.Background())
+	if callError != nil {
+		testCase.Fatal(callError)
 	}
 }

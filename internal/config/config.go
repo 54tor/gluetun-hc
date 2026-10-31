@@ -30,6 +30,8 @@ type Config struct {
 	RiseThreshold    int
 	ControlURL       string
 	ControlAPIKey    string
+	ControlUsername  string
+	ControlPassword  string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -37,9 +39,15 @@ func Load(getenv func(string) string) (Config, error) {
 		GluetunContainer: getenv("GLUETUN_CONTAINER"),
 		InboundContainer: getenv("INBOUND_CONTAINER"),
 		ControlAPIKey:    getenv("GLUETUN_API_KEY"),
+		ControlUsername:  getenv("GLUETUN_USER"),
+		ControlPassword:  getenv("GLUETUN_PASSWORD"),
 	}
 	if loaded.GluetunContainer == "" {
 		return Config{}, errors.New("GLUETUN_CONTAINER est obligatoire")
+	}
+
+	if credentialsError := validateControlCredentials(loaded); credentialsError != nil {
+		return Config{}, credentialsError
 	}
 
 	var parseError error

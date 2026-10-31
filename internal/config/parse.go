@@ -72,3 +72,14 @@ func positiveIntOrDefault(raw string, fallback int) (int, error) {
 	}
 	return parsed, nil
 }
+
+func validateControlCredentials(loaded Config) error {
+	hasBasicCredentials := loaded.ControlUsername != "" || loaded.ControlPassword != ""
+	if hasBasicCredentials && (loaded.ControlUsername == "" || loaded.ControlPassword == "") {
+		return errors.New("GLUETUN_USER et GLUETUN_PASSWORD vont ensemble")
+	}
+	if hasBasicCredentials && loaded.ControlAPIKey != "" {
+		return errors.New("GLUETUN_API_KEY et GLUETUN_USER/GLUETUN_PASSWORD s'excluent")
+	}
+	return nil
+}

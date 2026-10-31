@@ -11,14 +11,20 @@ import (
 
 var ErrNoForwardedPort = errors.New("aucun port forwardé")
 
-type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+type Credentials struct {
+	APIKey   string
+	Username string
+	Password string
 }
 
-func NewClient(baseURL, apiKey string, httpClient *http.Client) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, httpClient: httpClient}
+type Client struct {
+	baseURL     string
+	credentials Credentials
+	httpClient  *http.Client
+}
+
+func NewClient(baseURL string, credentials Credentials, httpClient *http.Client) *Client {
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), credentials: credentials, httpClient: httpClient}
 }
 
 func (client *Client) PublicIP(requestContext context.Context) (string, error) {
@@ -49,9 +55,7 @@ func (client *Client) getJSON(requestContext context.Context, path string, desti
 	if requestError != nil {
 		return requestError
 	}
-	if client.apiKey != "" {
-		request.Header.Set("X-API-Key", client.apiKey)
-	}
+	client.authenticate(request)
 	response, requestError := client.httpClient.Do(request)
 	if requestError != nil {
 		return requestError
@@ -61,4 +65,14 @@ func (client *Client) getJSON(requestContext context.Context, path string, desti
 		return fmt.Errorf("%s : statut %d", path, response.StatusCode)
 	}
 	return json.NewDecoder(response.Body).Decode(destination)
+}
+
+func (client *Client) authenticate(request *http.Request) {
+	if client.credentials.APIKey != "" {
+		request.Header.Set("X-API-Key", client.credentials.APIKey)
+		return
+	}
+	if client.credentials.Username != "" {
+		request.SetBasicAuth(client.credentials.Username, client.credentials.Password)
+	}
 }

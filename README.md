@@ -32,6 +32,7 @@ Après un redémarrage, la cible n'est plus testée pendant son délai de grâce
 | `GLUETUN_GRACE` | valeur de `GRACE` | Délai de grâce de Gluetun |
 | `GLUETUN_CONTROL_URL` | `http://gluetun:8000` | API de contrôle de Gluetun |
 | `GLUETUN_API_KEY` | vide | Clé d'API (en-tête `X-API-Key`) |
+| `GLUETUN_USER` / `GLUETUN_PASSWORD` | vides | Authentification basique, exclusive avec la clé d'API |
 
 Le rôle d'authentification de Gluetun doit autoriser `GET /v1/publicip/ip` et `GET /v1/portforward`.
 
