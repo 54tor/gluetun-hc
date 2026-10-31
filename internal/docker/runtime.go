@@ -2,10 +2,31 @@ package docker
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/client"
+
+	"gluetun-hc/internal/monitor"
 )
+
+const executableNotFoundExitCode = 127
+
+func exitCodeFromStartError(startError error) (int, bool) {
+	if strings.Contains(startError.Error(), "executable file not found") {
+		return executableNotFoundExitCode, true
+	}
+	return 0, false
+}
+
+func wrapUnavailable(dockerError error) error {
+	if cerrdefs.IsNotFound(dockerError) || cerrdefs.IsConflict(dockerError) {
+		return fmt.Errorf("%w : %v", monitor.ErrContainerUnavailable, dockerError)
+	}
+	return dockerError
+}
 
 const execPollInterval = 200 * time.Millisecond
 
@@ -20,10 +41,13 @@ func NewRuntime(dockerClient *client.Client) *Runtime {
 func (runtime *Runtime) Exec(operationContext context.Context, container string, command []string) (int, error) {
 	created, dockerError := runtime.dockerClient.ExecCreate(operationContext, container, client.ExecCreateOptions{Cmd: command})
 	if dockerError != nil {
-		return 0, dockerError
+		return 0, wrapUnavailable(dockerError)
 	}
 	if _, dockerError := runtime.dockerClient.ExecStart(operationContext, created.ID, client.ExecStartOptions{Detach: true}); dockerError != nil {
-		return 0, dockerError
+		if exitCode, recognized := exitCodeFromStartError(dockerError); recognized {
+			return exitCode, nil
+		}
+		return 0, wrapUnavailable(dockerError)
 	}
 	ticker := time.NewTicker(execPollInterval)
 	defer ticker.Stop()

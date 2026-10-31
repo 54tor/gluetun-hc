@@ -16,7 +16,10 @@ import (
 const (
 	pingBinaryMissingExitCode = 127
 	pingTimeoutSeconds        = "3"
+	defaultExecTimeout        = 15 * time.Second
 )
+
+var ErrContainerUnavailable = errors.New("conteneur absent ou arrêté")
 
 type Runtime interface {
 	Exec(operationContext context.Context, container string, command []string) (int, error)
@@ -48,16 +51,18 @@ type Monitor struct {
 	gluetunTarget         *target
 	watchedTargets        []*target
 	watchedRestartPending bool
+	execTimeout           time.Duration
 }
 
 func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, dial Dialer, now func() time.Time, logger *slog.Logger) *Monitor {
 	monitor := &Monitor{
-		settings:   settings,
-		runtime:    runtime,
-		controlAPI: controlAPI,
-		dial:       dial,
-		now:        now,
-		logger:     logger,
+		settings:    settings,
+		runtime:     runtime,
+		controlAPI:  controlAPI,
+		dial:        dial,
+		now:         now,
+		logger:      logger,
+		execTimeout: defaultExecTimeout,
 	}
 	monitor.gluetunTarget = monitor.newTarget(settings.GluetunContainer, settings.GluetunGrace)
 	for _, watched := range settings.Watched {
@@ -139,6 +144,10 @@ func (monitor *Monitor) checkInbound(operationContext context.Context, watched *
 		monitor.logger.Warn("IP publique indisponible, contrôle entrant sauté", "error", ipError)
 		return
 	}
+	if publicIP == "" {
+		monitor.logger.Warn("IP publique vide, contrôle entrant sauté")
+		return
+	}
 	forwardedPort, portError := monitor.controlAPI.ForwardedPort(operationContext)
 	if errors.Is(portError, gluetun.ErrNoForwardedPort) {
 		return
@@ -168,8 +177,14 @@ func (monitor *Monitor) restart(operationContext context.Context, restarted *tar
 
 func (monitor *Monitor) pingFrom(operationContext context.Context, container string) (reachable bool, counted bool) {
 	for _, pingTarget := range monitor.settings.PingTargets {
-		exitCode, execError := monitor.runtime.Exec(operationContext, container,
+		execContext, cancelExec := context.WithTimeout(operationContext, monitor.execTimeout)
+		exitCode, execError := monitor.runtime.Exec(execContext, container,
 			[]string{"ping", "-c1", "-W" + pingTimeoutSeconds, pingTarget})
+		cancelExec()
+		if errors.Is(execError, ErrContainerUnavailable) {
+			monitor.logger.Warn("conteneur absent ou arrêté, sonde sautée", "container", container)
+			return false, false
+		}
 		if execError != nil {
 			monitor.logger.Warn("exec impossible", "container", container, "error", execError)
 			return false, true

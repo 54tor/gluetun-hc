@@ -69,7 +69,14 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, errors.New("INBOUND_CONTAINER doit figurer dans WATCHED")
 	}
 
+	if loaded.Interval <= 0 {
+		return Config{}, errors.New("INTERVAL doit être strictement positif")
+	}
+
 	loaded.PingTargets = splitList(valueOrDefault(getenv("PING_TARGETS"), defaultPingTargets))
+	if len(loaded.PingTargets) == 0 {
+		return Config{}, errors.New("PING_TARGETS doit lister au moins une cible")
+	}
 	loaded.ControlURL = valueOrDefault(getenv("GLUETUN_CONTROL_URL"), defaultControlURL)
 	return loaded, nil
 }

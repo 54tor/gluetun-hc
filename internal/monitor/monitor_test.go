@@ -21,6 +21,7 @@ type fakeRuntime struct {
 	pingedContainers        []string
 	pingedTargets           []string
 	restartedContainers     []string
+	blockUntilCancelled     bool
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -32,6 +33,10 @@ func newFakeRuntime() *fakeRuntime {
 
 func (runtime *fakeRuntime) Exec(operationContext context.Context, container string, command []string) (int, error) {
 	runtime.pingedContainers = append(runtime.pingedContainers, container)
+	if runtime.blockUntilCancelled {
+		<-operationContext.Done()
+		return 0, operationContext.Err()
+	}
 	runtime.pingedTargets = append(runtime.pingedTargets, command[len(command)-1])
 	if pingError := runtime.pingErrorByContainer[container]; pingError != nil {
 		return 0, pingError
@@ -273,16 +278,45 @@ func TestInboundSkippedWhenControlAPIDown(testCase *testing.T) {
 	}
 }
 
-func TestMissingContainerLoggedNotFatal(testCase *testing.T) {
+func TestMissingContainerNeverRestartedAndOthersStillChecked(testCase *testing.T) {
 	watched := []config.Watched{
 		{Name: "missing", Grace: 5 * time.Minute},
 		{Name: "app", Grace: 5 * time.Minute},
 	}
 	bench := newBench(watched, "")
-	bench.runtime.pingErrorByContainer["missing"] = errors.New("conteneur absent")
+	bench.runtime.pingErrorByContainer["missing"] = ErrContainerUnavailable
 	bench.runtime.pingExitCodeByContainer["app"] = 1
 	bench.tick(2)
+	if bench.runtime.restartCount("missing") != 0 {
+		testCase.Fatal("un conteneur absent ou arrêté ne doit pas être redémarré")
+	}
 	if bench.runtime.restartCount("app") != 1 {
 		testCase.Fatal("app doit être contrôlé même si un autre conteneur est absent")
+	}
+}
+
+func TestInboundSkippedWhenPublicIPEmpty(testCase *testing.T) {
+	bench := newBench(singleApp(), "app")
+	bench.controlAPI.publicIP = ""
+	bench.dialError = errors.New("connexion refusée")
+	bench.tick(5)
+	if len(bench.dialedAddress) != 0 || bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("une IP publique vide saute le contrôle entrant")
+	}
+}
+
+func TestBlockedExecIsCutByTimeout(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.monitor.execTimeout = 10 * time.Millisecond
+	bench.runtime.blockUntilCancelled = true
+	finished := make(chan struct{})
+	go func() {
+		bench.tick(2)
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		testCase.Fatal("Tick doit rendre la main malgré un exec bloqué")
 	}
 }

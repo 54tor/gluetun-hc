@@ -81,3 +81,25 @@ func TestLoadRejectsInboundContainerNotWatched(testCase *testing.T) {
 		testCase.Fatal("erreur attendue")
 	}
 }
+
+func TestLoadRejectsNonPositiveInterval(testCase *testing.T) {
+	_, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"INTERVAL":          "0s",
+	}))
+	if loadError == nil {
+		testCase.Fatal("erreur attendue")
+	}
+}
+
+func TestLoadRejectsEmptyPingTargets(testCase *testing.T) {
+	_, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"PING_TARGETS":      ",",
+	}))
+	if loadError == nil {
+		testCase.Fatal("erreur attendue")
+	}
+}
