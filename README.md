@@ -40,7 +40,11 @@ L'IP publique et le port forwardé sont lus d'abord dans les fichiers de Gluetun
 
 ## Droits Docker
 
-Le moniteur utilise le socket Docker pour lister, exécuter (`exec`) et redémarrer des conteneurs. Un accès direct au socket équivaut à un accès root à l'hôte : préférer un proxy de socket qui n'autorise que ces opérations, via `DOCKER_HOST`.
+Le moniteur utilise l'API Docker pour inspecter, exécuter (`exec`) et redémarrer des conteneurs. Il lit `DOCKER_HOST` : l'exemple `compose.yaml` passe par un proxy de socket (`wollomatic/socket-proxy`) qui n'autorise que ces appels, et uniquement sur Gluetun et les conteneurs surveillés. Un accès direct au socket équivaut à un accès root à l'hôte.
+
+- `DOCKER_GID` (identifiant du groupe `docker` de l'hôte) doit être défini : `DOCKER_GID=$(stat -c %g /var/run/docker.sock)`.
+- Les expressions `-allowGET` et `-allowPOST` du proxy nomment les conteneurs autorisés (`gluetun`, `app`) : les adapter à `GLUETUN_CONTAINER` et `WATCHED`.
+- Le réseau `docker-proxy` est interne : le proxy n'est joignable que par le moniteur.
 
 ## Limites
 

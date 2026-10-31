@@ -12,18 +12,28 @@ import (
 
 const integrationContainerName = "gluetun-hc-integration-check"
 
+func dockerCommandOnRealSocket(arguments ...string) *exec.Cmd {
+	command := exec.Command("docker", arguments...)
+	for _, variable := range os.Environ() {
+		if !strings.HasPrefix(variable, "DOCKER_HOST=") {
+			command.Env = append(command.Env, variable)
+		}
+	}
+	return command
+}
+
 func startIntegrationContainer(testCase *testing.T) *Runtime {
 	if os.Getenv("GLUETUN_HC_INTEGRATION") == "" {
 		testCase.Skip("GLUETUN_HC_INTEGRATION non défini")
 	}
-	exec.Command("docker", "rm", "-f", integrationContainerName).Run()
-	startCommand := exec.Command("docker", "run", "-d", "--name", integrationContainerName, "alpine:latest",
+	dockerCommandOnRealSocket("rm", "-f", integrationContainerName).Run()
+	startCommand := dockerCommandOnRealSocket("run", "-d", "--name", integrationContainerName, "alpine:latest",
 		"sh", "-c", "mkdir -p /tmp/gluetun && echo 5914 > /tmp/gluetun/forwarded_port && sleep 300")
 	if output, startError := startCommand.CombinedOutput(); startError != nil {
 		testCase.Fatalf("démarrage impossible : %v : %s", startError, output)
 	}
 	testCase.Cleanup(func() {
-		exec.Command("docker", "rm", "-f", integrationContainerName).Run()
+		dockerCommandOnRealSocket("rm", "-f", integrationContainerName).Run()
 	})
 
 	dockerClient, clientError := client.New(client.FromEnv)
@@ -58,7 +68,7 @@ func TestIntegrationIsRunningFollowsContainerState(testCase *testing.T) {
 	if inspectError != nil || !running {
 		testCase.Fatalf("doit tourner : %v %v", running, inspectError)
 	}
-	exec.Command("docker", "stop", "-t", "1", integrationContainerName).Run()
+	dockerCommandOnRealSocket("stop", "-t", "1", integrationContainerName).Run()
 	running, inspectError = runtime.IsRunning(context.Background(), integrationContainerName)
 	if inspectError != nil || running {
 		testCase.Fatalf("doit être arrêté : %v %v", running, inspectError)

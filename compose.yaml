@@ -19,13 +19,43 @@ services:
         condition: service_healthy
         restart: true
 
+  socket-proxy:
+    image: wollomatic/socket-proxy:1
+    container_name: socket-proxy
+    user: "65534:${DOCKER_GID:?}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    command:
+      - '-listenip=0.0.0.0'
+      - '-allowfrom=gluetun-hc'
+      - '-allowHEAD=(/v1\..{1,2})?/_ping'
+      - '-allowGET=(/v1\..{1,2})?/(_ping|containers/(gluetun|app)/json|exec/[^/]+/json)'
+      - '-allowPOST=(/v1\..{1,2})?/(containers/(gluetun|app)/(exec|restart)|exec/[^/]+/start)'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-proxy
+    restart: unless-stopped
+
   gluetun-hc:
     build: .
+    container_name: gluetun-hc
     environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
       GLUETUN_CONTAINER: gluetun
       WATCHED: app
       GLUETUN_CONTROL_URL: http://gluetun:8000
       GLUETUN_API_KEY: ${GLUETUN_API_KEY}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - socket-proxy
+    networks:
+      - default
+      - docker-proxy
     restart: unless-stopped
+
+networks:
+  docker-proxy:
+    internal: true
