@@ -10,6 +10,7 @@ var ErrContainerUnavailable = errors.New("conteneur absent ou arrêté")
 type Runtime interface {
 	Exec(operationContext context.Context, container string, command []string) (int, error)
 	Restart(operationContext context.Context, container string) error
+	IsRunning(operationContext context.Context, container string) (bool, error)
 }
 
 type ControlAPI interface {

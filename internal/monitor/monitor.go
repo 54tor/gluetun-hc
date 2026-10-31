@@ -101,6 +101,17 @@ func (monitor *Monitor) rejoinWatched(operationContext context.Context, gluetunR
 }
 
 func (monitor *Monitor) restart(operationContext context.Context, restarted *target, currentTime time.Time) bool {
+	running, inspectError := monitor.runtime.IsRunning(operationContext, restarted.name)
+	if inspectError != nil {
+		monitor.logger.Error("état du conteneur inconnu, pas de redémarrage", "container", restarted.name, "error", inspectError)
+		return false
+	}
+	if !running {
+		monitor.logger.Info("conteneur arrêté, laissé à l'arrêt", "container", restarted.name)
+		restarted.outbound.Reset()
+		restarted.inbound.Reset()
+		return true
+	}
 	if restartError := monitor.runtime.Restart(operationContext, restarted.name); restartError != nil {
 		monitor.logger.Error("redémarrage impossible, nouvelle tentative au prochain contrôle", "container", restarted.name, "error", restartError)
 		return false

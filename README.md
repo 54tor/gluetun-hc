@@ -14,6 +14,8 @@ Quand Gluetun redémarre ou que son tunnel WireGuard tombe, les conteneurs qui p
 2. **Conteneurs** : `ping` exécuté dans chaque conteneur surveillé (sortant), seulement si Gluetun répond.
 3. **Entrant** (facultatif) : connexion TCP vers `IP publique:port forwardé` de Gluetun. En cas d'échec, `INBOUND_CONTAINER` est redémarré. Sans port forwardé ou API de contrôle injoignable, le contrôle est sauté.
 
+Un conteneur arrêté à la main n'est jamais relancé : l'état est vérifié avant tout redémarrage, y compris celui de Gluetun.
+
 Après un redémarrage, la cible n'est plus testée pendant son délai de grâce.
 
 ## Configuration

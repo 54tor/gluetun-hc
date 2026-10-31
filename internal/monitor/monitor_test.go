@@ -23,6 +23,8 @@ type fakeRuntime struct {
 	restartedContainers     []string
 	blockUntilCancelled     bool
 	restartFailuresLeft     map[string]int
+	stoppedContainers       map[string]bool
+	inspectErrorByContainer map[string]error
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -30,7 +32,16 @@ func newFakeRuntime() *fakeRuntime {
 		pingExitCodeByContainer: map[string]int{},
 		pingErrorByContainer:    map[string]error{},
 		restartFailuresLeft:     map[string]int{},
+		stoppedContainers:       map[string]bool{},
+		inspectErrorByContainer: map[string]error{},
 	}
+}
+
+func (runtime *fakeRuntime) IsRunning(operationContext context.Context, container string) (bool, error) {
+	if inspectError := runtime.inspectErrorByContainer[container]; inspectError != nil {
+		return false, inspectError
+	}
+	return !runtime.stoppedContainers[container], nil
 }
 
 func (runtime *fakeRuntime) Exec(operationContext context.Context, container string, command []string) (int, error) {
@@ -424,5 +435,55 @@ func TestGluetunFlapResetsRiseStreak(testCase *testing.T) {
 	bench.tick(1)
 	if bench.runtime.restartCount("app") != 1 {
 		testCase.Fatal("deux succès consécutifs doivent déclencher le raccrochage")
+	}
+}
+
+func TestManuallyStoppedContainerNotRestartedOnFailure(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.runtime.stoppedContainers["app"] = true
+	bench.tick(5)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("un conteneur arrêté à la main ne doit jamais être relancé")
+	}
+}
+
+func TestManuallyStoppedContainerNotRejoinedAfterGluetunRestart(testCase *testing.T) {
+	watched := []config.Watched{
+		{Name: "stopped", Grace: 5 * time.Minute},
+		{Name: "running", Grace: 5 * time.Minute},
+	}
+	bench := newBench(watched, "")
+	bench.runtime.stoppedContainers["stopped"] = true
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.tick(2)
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 0
+	bench.advance(6 * time.Minute)
+	bench.tick(3)
+	if bench.runtime.restartCount("stopped") != 0 {
+		testCase.Fatal("le conteneur arrêté ne doit pas être relancé par le raccrochage")
+	}
+	if bench.runtime.restartCount("running") != 1 {
+		testCase.Fatal("le conteneur en marche doit être raccroché")
+	}
+}
+
+func TestManuallyStoppedGluetunNotRestarted(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer[gluetunName] = 1
+	bench.runtime.stoppedContainers[gluetunName] = true
+	bench.tick(5)
+	if bench.runtime.restartCount(gluetunName) != 0 {
+		testCase.Fatal("Gluetun arrêté à la main ne doit pas être relancé")
+	}
+}
+
+func TestRestartSkippedWhenStateUnknown(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.runtime.pingExitCodeByContainer["app"] = 1
+	bench.runtime.inspectErrorByContainer["app"] = errors.New("démon injoignable")
+	bench.tick(5)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("état inconnu : pas de redémarrage")
 	}
 }

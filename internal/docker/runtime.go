@@ -71,3 +71,11 @@ func (runtime *Runtime) Restart(operationContext context.Context, container stri
 	_, dockerError := runtime.dockerClient.ContainerRestart(operationContext, container, client.ContainerRestartOptions{})
 	return dockerError
 }
+
+func (runtime *Runtime) IsRunning(operationContext context.Context, container string) (bool, error) {
+	inspected, dockerError := runtime.dockerClient.ContainerInspect(operationContext, container, client.ContainerInspectOptions{})
+	if dockerError != nil {
+		return false, wrapUnavailable(dockerError)
+	}
+	return inspected.Container.State.Running, nil
+}
