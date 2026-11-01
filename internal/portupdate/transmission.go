@@ -9,7 +9,7 @@ import (
 	"github.com/hekmon/transmissionrpc/v3"
 )
 
-var errNoPeerPort = errors.New("Transmission n'a pas renvoyé peer-port")
+var errNoPeerPort = errors.New("peer-port absent de la réponse de Transmission")
 
 const defaultTransmissionRPCPath = "/transmission/rpc"
 
