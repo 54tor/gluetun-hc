@@ -37,6 +37,27 @@ Après un redémarrage, la cible n'est plus testée pendant son délai de grâce
 
 L'IP publique et le port forwardé sont lus d'abord dans les fichiers de Gluetun (`cat` exécuté dans son conteneur : rien à monter, aucune authentification). Si un fichier manque ou est illisible, le moniteur se rabat sur l'API de contrôle : son rôle d'authentification doit alors autoriser `GET /v1/publicip/ip` et `GET /v1/portforward`. Gluetun annonce la suppression de ces fichiers en v4.
 
+## Mise à jour du port de la cible
+
+Quand Gluetun obtient un port forwardé, le moniteur peut l'appliquer à une application (une seule cible, un seul port), par exemple le port d'écoute de qBittorrent.
+
+- Il lit le port de Gluetun (fichier ou API, voir `GLUETUN_SOURCE`) à chaque contrôle.
+- **qBittorrent** : il lit d'abord le port d'écoute actuel et n'écrit que s'il diffère. Un qBittorrent redémarré avec une configuration perdue est donc corrigé sans autre déclencheur.
+- **HTTP générique** : pas de lecture possible, le port est appliqué au démarrage du moniteur, à chaque changement et après chaque redémarrage de la cible ; un échec est retenté au contrôle suivant.
+- Tant que le port n'est pas appliqué, le contrôle entrant est suspendu : la cible n'est jamais redémarrée à cause d'un port qui n'écoute pas encore.
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `PORT_UPDATE_MODE` | vide (désactivé) | `qbittorrent` ou `http` |
+| `PORT_UPDATE_URL` | obligatoire | qBittorrent : URL de l'interface web (ex. `http://qbittorrent:8080`) ; `http` : URL de la requête, `{{port}}` est remplacé |
+| `PORT_UPDATE_CONTAINER` | `INBOUND_CONTAINER` | Conteneur cible (doit figurer dans `WATCHED`) |
+| `PORT_UPDATE_USER` / `PORT_UPDATE_PASSWORD` | vides | qBittorrent : identifiants de l'interface web |
+| `PORT_UPDATE_METHOD` | `POST` | `http` : méthode |
+| `PORT_UPDATE_HEADERS` | vide | `http` : en-têtes, un `Nom: valeur` par ligne, `{{port}}` remplacé |
+| `PORT_UPDATE_BODY` | vide | `http` : corps, `{{port}}` remplacé |
+
+L'interface web de la cible est jointe depuis le réseau Docker : elle partage le namespace de Gluetun, donc son nom d'hôte est celui du conteneur Gluetun (ex. `http://gluetun:8080`).
+
 ## Intégration continue
 
 `.github/workflows/ci.yml` lance `go vet` et `go test` à chaque push et pull request, puis construit l'image en `linux/amd64` et `linux/arm64`. Hors pull request, l'image est publiée sur `ghcr.io/<propriétaire>/gluetun-hc` : `latest` sur `main`, la version sur un tag `v*`, et le SHA du commit.

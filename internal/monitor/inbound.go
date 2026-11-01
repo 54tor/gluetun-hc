@@ -13,6 +13,9 @@ import (
 const netcatTimeoutSeconds = "3"
 
 func (monitor *Monitor) checkInbound(operationContext context.Context, watched *target, currentTime time.Time) {
+	if monitor.isPortSyncPending() {
+		return
+	}
 	address, canCheck := monitor.inboundAddress(operationContext)
 	if !canCheck {
 		return

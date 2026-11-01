@@ -19,6 +19,7 @@ type Monitor struct {
 	gluetunTarget  *target
 	watchedTargets []*target
 	execTimeout    time.Duration
+	portSync       *portSync
 }
 
 func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, now func() time.Time, logger *slog.Logger) *Monitor {
@@ -50,6 +51,7 @@ func (monitor *Monitor) Tick(operationContext context.Context) {
 		monitor.rejoinWatched(operationContext, result, currentTime)
 		return
 	}
+	monitor.syncPort(operationContext)
 	for _, watched := range monitor.watchedTargets {
 		monitor.checkWatched(operationContext, watched, currentTime)
 	}
@@ -117,5 +119,6 @@ func (monitor *Monitor) restart(operationContext context.Context, restarted *tar
 	restarted.outbound.Reset()
 	restarted.inbound.Reset()
 	restarted.graceUntil = currentTime.Add(restarted.grace)
+	monitor.markPortSyncAfterRestart(restarted.name)
 	return true
 }

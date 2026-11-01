@@ -38,6 +38,7 @@ type Config struct {
 	PublicIPFile     string
 	PortFile         string
 	ControlSource    string
+	PortUpdate       PortUpdate
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -91,6 +92,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	loaded.PublicIPFile = valueOrDefault(getenv("GLUETUN_PUBLIC_IP_FILE"), defaultPublicIPFile)
 	loaded.PortFile = valueOrDefault(getenv("GLUETUN_PORT_FILE"), defaultPortFile)
+	if loaded.PortUpdate, parseError = loadPortUpdate(getenv, loaded.InboundContainer, loaded.Watched); parseError != nil {
+		return Config{}, parseError
+	}
 	loaded.ControlSource = valueOrDefault(getenv("GLUETUN_SOURCE"), defaultControlSource)
 	if !isKnownControlSource(loaded.ControlSource) {
 		return Config{}, errors.New("GLUETUN_SOURCE doit valoir auto, api ou files")

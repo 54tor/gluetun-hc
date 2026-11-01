@@ -15,6 +15,7 @@ import (
 	"gluetun-hc/internal/docker"
 	"gluetun-hc/internal/gluetun"
 	"gluetun-hc/internal/monitor"
+	"gluetun-hc/internal/portupdate"
 )
 
 const (
@@ -47,6 +48,11 @@ func main() {
 	portSource := gluetun.SelectSource(settings.ControlSource, fileSource, controlClient)
 
 	runningMonitor := monitor.New(settings, dockerRuntime, portSource, time.Now, logger)
+
+	if settings.PortUpdate.Mode != "" {
+		updater := portupdate.FromConfig(settings.PortUpdate, &http.Client{Timeout: controlAPITimeout})
+		runningMonitor.EnablePortSync(updater, settings.PortUpdate.Container)
+	}
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
