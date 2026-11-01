@@ -43,5 +43,5 @@ func (source *FileSource) ForwardedPort(operationContext context.Context) (int, 
 	if parseError != nil {
 		return 0, fmt.Errorf("contenu de %s invalide : %w", source.portPath, parseError)
 	}
-	return port, nil
+	return checkPortRange(port)
 }

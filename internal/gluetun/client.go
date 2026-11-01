@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-const maxErrorBodyBytes = 200
+const (
+	maxErrorBodyBytes = 200
+	maxPort           = 65535
+)
 
 var ErrNoForwardedPort = errors.New("aucun port forwardé")
 
@@ -50,7 +53,14 @@ func (client *Client) ForwardedPort(requestContext context.Context) (int, error)
 	if body.Port == 0 {
 		return 0, ErrNoForwardedPort
 	}
-	return body.Port, nil
+	return checkPortRange(body.Port)
+}
+
+func checkPortRange(port int) (int, error) {
+	if port < 1 || port > maxPort {
+		return 0, fmt.Errorf("port forwardé %d hors de la plage 1-%d", port, maxPort)
+	}
+	return port, nil
 }
 
 func (client *Client) getJSON(requestContext context.Context, path string, destination any) error {

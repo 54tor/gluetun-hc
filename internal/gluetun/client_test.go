@@ -113,3 +113,13 @@ func TestNon200ErrorIncludesResponseBody(testCase *testing.T) {
 		testCase.Fatalf("le corps doit figurer dans l'erreur : %v", callError)
 	}
 }
+
+func TestForwardedPortOutOfRangeIsRejected(testCase *testing.T) {
+	for _, body := range []string{`{"port":70000}`, `{"port":-5}`} {
+		server := serverReplying(testCase, map[string]string{"/v1/portforward": body})
+		_, callError := NewClient(server.URL, Credentials{APIKey: "secret"}, server.Client()).ForwardedPort(context.Background())
+		if callError == nil || errors.Is(callError, ErrNoForwardedPort) {
+			testCase.Fatalf("%s doit être refusé, erreur %v", body, callError)
+		}
+	}
+}
