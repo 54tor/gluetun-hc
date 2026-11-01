@@ -3,9 +3,12 @@ package monitor
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gluetun-hc/internal/gluetun"
 )
+
+const defaultPortSyncTimeout = 15 * time.Second
 
 type PortUpdater interface {
 	Apply(operationContext context.Context, port int) error
@@ -46,10 +49,12 @@ func (monitor *Monitor) markPortSyncAfterRestart(restartedContainer string) {
 	}
 }
 
-func (monitor *Monitor) syncPort(operationContext context.Context) {
+func (monitor *Monitor) syncPort(tickContext context.Context) {
 	if monitor.portSync == nil {
 		return
 	}
+	operationContext, cancelSync := context.WithTimeout(tickContext, monitor.portSyncTimeout)
+	defer cancelSync()
 	forwardedPort, portError := monitor.controlAPI.ForwardedPort(operationContext)
 	if errors.Is(portError, gluetun.ErrNoForwardedPort) {
 		return

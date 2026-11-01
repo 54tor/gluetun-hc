@@ -6,6 +6,8 @@ import (
 	"github.com/autobrr/go-qbittorrent"
 )
 
+const qbittorrentTimeoutSeconds = 5
+
 type QBittorrentUpdater struct {
 	client *qbittorrent.Client
 }
@@ -15,6 +17,7 @@ func NewQBittorrentUpdater(baseURL, username, password string) *QBittorrentUpdat
 		Host:     baseURL,
 		Username: username,
 		Password: password,
+		Timeout:  qbittorrentTimeoutSeconds,
 	})
 	return &QBittorrentUpdater{client: client}
 }

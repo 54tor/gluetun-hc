@@ -11,26 +11,28 @@ import (
 const defaultExecTimeout = 15 * time.Second
 
 type Monitor struct {
-	settings       config.Config
-	runtime        Runtime
-	controlAPI     ControlAPI
-	now            func() time.Time
-	logger         *slog.Logger
-	gluetunTarget  *target
-	watchedTargets []*target
-	execTimeout    time.Duration
-	portSync       *portSync
-	verdict        gluetunVerdict
+	settings        config.Config
+	runtime         Runtime
+	controlAPI      ControlAPI
+	now             func() time.Time
+	logger          *slog.Logger
+	gluetunTarget   *target
+	watchedTargets  []*target
+	execTimeout     time.Duration
+	portSyncTimeout time.Duration
+	portSync        *portSync
+	verdict         gluetunVerdict
 }
 
 func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, now func() time.Time, logger *slog.Logger) *Monitor {
 	monitor := &Monitor{
-		settings:    settings,
-		runtime:     runtime,
-		controlAPI:  controlAPI,
-		now:         now,
-		logger:      logger,
-		execTimeout: defaultExecTimeout,
+		settings:        settings,
+		runtime:         runtime,
+		controlAPI:      controlAPI,
+		now:             now,
+		logger:          logger,
+		execTimeout:     defaultExecTimeout,
+		portSyncTimeout: defaultPortSyncTimeout,
 	}
 	monitor.gluetunTarget = monitor.newTarget(settings.GluetunContainer, settings.GluetunGrace)
 	for _, watched := range settings.Watched {

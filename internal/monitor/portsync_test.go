@@ -196,3 +196,26 @@ func TestInboundFailuresBeforeApplicationAreNotCounted(testCase *testing.T) {
 		testCase.Fatal("après application, deux échecs entrants consécutifs redémarrent la cible")
 	}
 }
+
+type blockingPortUpdater struct{}
+
+func (blockingPortUpdater) Apply(operationContext context.Context, port int) error {
+	<-operationContext.Done()
+	return operationContext.Err()
+}
+
+func TestPortSyncBlockedUpdaterIsCutByTimeout(testCase *testing.T) {
+	bench := newBench(singleApp(), "")
+	bench.monitor.portSyncTimeout = 10 * time.Millisecond
+	bench.monitor.EnablePortSync(blockingPortUpdater{}, "app")
+	finished := make(chan struct{})
+	go func() {
+		bench.tick(1)
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		testCase.Fatal("Tick doit rendre la main malgré un updater bloqué")
+	}
+}
