@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
 
@@ -50,16 +51,24 @@ func (runtime *Runtime) ownProject(operationContext context.Context) string {
 	return runtime.cachedProject
 }
 
-func (runtime *Runtime) resolve(operationContext context.Context, requested string) (string, error) {
+func (runtime *Runtime) listServiceContainers(operationContext context.Context, service string) ([]container.Summary, error) {
 	listed, listError := runtime.dockerClient.ContainerList(operationContext, client.ContainerListOptions{
 		All:     true,
-		Filters: serviceFilters(requested, runtime.ownProject(operationContext)),
+		Filters: serviceFilters(service, runtime.ownProject(operationContext)),
 	})
+	if listError != nil {
+		return nil, listError
+	}
+	return listed.Items, nil
+}
+
+func (runtime *Runtime) resolve(operationContext context.Context, requested string) (string, error) {
+	matches, listError := runtime.listServiceContainers(operationContext, requested)
 	if listError != nil {
 		return "", listError
 	}
 	var serviceMatches []string
-	for _, summary := range listed.Items {
+	for _, summary := range matches {
 		if len(summary.Names) > 0 {
 			serviceMatches = append(serviceMatches, summary.Names[0])
 		}

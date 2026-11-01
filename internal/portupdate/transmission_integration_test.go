@@ -11,7 +11,7 @@ func TestIntegrationTransmissionRoundTrip(testCase *testing.T) {
 	if baseURL == "" {
 		testCase.Skip("TRANSMISSION_URL non défini")
 	}
-	updater, buildError := NewTransmissionUpdater(baseURL, os.Getenv("TRANSMISSION_USER"), os.Getenv("TRANSMISSION_PASSWORD"))
+	updater, buildError := NewTransmissionUpdater(baseURL, os.Getenv("TRANSMISSION_USER"), os.Getenv("TRANSMISSION_PASSWORD"), nil)
 	if buildError != nil {
 		testCase.Fatal(buildError)
 	}

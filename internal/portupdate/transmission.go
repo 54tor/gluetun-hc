@@ -3,6 +3,7 @@ package portupdate
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 
 	"github.com/hekmon/transmissionrpc/v3"
@@ -30,8 +31,12 @@ func transmissionEndpoint(rawURL, username, password string) *url.URL {
 	return endpoint
 }
 
-func NewTransmissionUpdater(rawURL, username, password string) (*TransmissionUpdater, error) {
-	client, clientError := transmissionrpc.New(transmissionEndpoint(rawURL, username, password), nil)
+func NewTransmissionUpdater(rawURL, username, password string, httpClient *http.Client) (*TransmissionUpdater, error) {
+	var extra *transmissionrpc.Config
+	if httpClient != nil {
+		extra = &transmissionrpc.Config{CustomClient: httpClient}
+	}
+	client, clientError := transmissionrpc.New(transmissionEndpoint(rawURL, username, password), extra)
 	if clientError != nil {
 		return nil, clientError
 	}

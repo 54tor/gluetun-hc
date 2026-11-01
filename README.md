@@ -59,19 +59,13 @@ Quand Gluetun obtient un port forwardé, le moniteur peut l'appliquer à une app
 
 L'interface web de la cible est jointe depuis le réseau Docker : elle partage le namespace de Gluetun, donc son nom d'hôte est celui du conteneur Gluetun (ex. `http://gluetun:8080`).
 
-## Santé du conteneur
+## Noms de service
 
-L'image déclare un `HEALTHCHECK` Docker : le conteneur `gluetun-hc` est `healthy` quand le dernier `ping` exécuté dans Gluetun vers une IP publique (`PING_TARGETS`, jamais un nom DNS) a réussi il y a moins de trois intervalles. Il est `unhealthy` avant la première sonde, pendant le délai de grâce qui suit un redémarrage de Gluetun, et dès qu'une sonde échoue, même sous le seuil de redémarrage (Docker applique ses propres tentatives : `--retries=3`).
+Partout où un nom de conteneur est attendu (`GLUETUN_CONTAINER`, `WATCHED`, `INBOUND_CONTAINER`, `PORT_UPDATE_CONTAINER`) et dans les URL (`GLUETUN_CONTROL_URL`, `PORT_UPDATE_URL`), on peut écrire le **nom de service Compose**. Le moniteur le résout dans son propre projet Compose (label `com.docker.compose.project` de son conteneur, lu via son nom d'hôte : ne pas définir `hostname:` sur lui).
 
-Un autre service peut attendre cet état :
-
-```yaml
-depends_on:
-  gluetun-hc:
-    condition: service_healthy
-```
-
-Le moniteur écoute sur `HEALTH_ADDRESS` (défaut `127.0.0.1:8081`, joignable seulement depuis le conteneur) et la commande `gluetun-hc healthcheck` l'interroge.
+- **Noms de conteneur** : résolus par l'API Docker.
+- **Hôtes des URL** : un hôte qui correspond à un service du projet est remplacé par l'adresse IP du conteneur sur un réseau qu'il partage avec le moniteur, au moment de la connexion. Le DNS de Docker n'est pas utilisé pour ces noms, ce qui évite de joindre le service du même nom d'une autre stack sur un réseau externe partagé. Les autres hôtes (noms DNS, IP) sont inchangés. Un service ambigu ou sans réseau commun fait échouer l'appel au lieu de retomber sur le DNS.
+- Le proxy de socket doit autoriser `GET /containers/json` (déjà le cas dans `compose.yaml`).
 
 ## Intégration continue
 

@@ -55,7 +55,7 @@ func (fake *fakeTransmission) answer(writer http.ResponseWriter, request *http.R
 
 func TestTransmissionUpdaterSetsPeerPortAfterHandshake(testCase *testing.T) {
 	fake := newFakeTransmission(testCase)
-	updater, buildError := NewTransmissionUpdater(fake.server.URL, "admin", "secret")
+	updater, buildError := NewTransmissionUpdater(fake.server.URL, "admin", "secret", nil)
 	if buildError != nil {
 		testCase.Fatal(buildError)
 	}
@@ -69,7 +69,7 @@ func TestTransmissionUpdaterSetsPeerPortAfterHandshake(testCase *testing.T) {
 
 func TestTransmissionUpdaterReadsCurrentPort(testCase *testing.T) {
 	fake := newFakeTransmission(testCase)
-	updater, _ := NewTransmissionUpdater(fake.server.URL, "admin", "secret")
+	updater, _ := NewTransmissionUpdater(fake.server.URL, "admin", "secret", nil)
 	currentPort, readError := updater.CurrentPort(context.Background())
 	if readError != nil || currentPort != 51413 {
 		testCase.Fatalf("port %d, erreur %v", currentPort, readError)
@@ -81,7 +81,7 @@ func TestTransmissionUpdaterReadsCurrentPort(testCase *testing.T) {
 
 func TestTransmissionUpdaterFailsWithWrongPassword(testCase *testing.T) {
 	fake := newFakeTransmission(testCase)
-	updater, _ := NewTransmissionUpdater(fake.server.URL, "admin", "mauvais")
+	updater, _ := NewTransmissionUpdater(fake.server.URL, "admin", "mauvais", nil)
 	if applyError := updater.Apply(context.Background(), 5914); applyError == nil {
 		testCase.Fatal("erreur attendue")
 	}
