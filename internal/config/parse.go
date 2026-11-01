@@ -83,3 +83,7 @@ func validateControlCredentials(loaded Config) error {
 	}
 	return nil
 }
+
+func isKnownControlSource(source string) bool {
+	return source == "auto" || source == "api" || source == "files"
+}

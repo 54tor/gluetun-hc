@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -97,5 +98,18 @@ func TestNoCredentialsSendsNoAuthentication(testCase *testing.T) {
 	_, callError := NewClient(server.URL, Credentials{}, server.Client()).PublicIP(context.Background())
 	if callError != nil {
 		testCase.Fatal(callError)
+	}
+}
+
+func TestNon200ErrorIncludesResponseBody(testCase *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+		writer.Write([]byte(`{"error":"unauthorized"}`))
+	}))
+	testCase.Cleanup(server.Close)
+
+	_, callError := NewClient(server.URL, Credentials{}, server.Client()).PublicIP(context.Background())
+	if callError == nil || !strings.Contains(callError.Error(), "unauthorized") {
+		testCase.Fatalf("le corps doit figurer dans l'erreur : %v", callError)
 	}
 }

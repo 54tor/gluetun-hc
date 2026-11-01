@@ -168,3 +168,34 @@ func TestLoadControlFilePathsDefaultsAndOverride(testCase *testing.T) {
 		testCase.Fatalf("surcharge : %q %q", overridden.PublicIPFile, overridden.PortFile)
 	}
 }
+
+func TestLoadControlSourceDefaultsToAuto(testCase *testing.T) {
+	loaded, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+	}))
+	if loadError != nil || loaded.ControlSource != "auto" {
+		testCase.Fatalf("source %q, erreur %v", loaded.ControlSource, loadError)
+	}
+}
+
+func TestLoadControlSourceAcceptsKnownValuesOnly(testCase *testing.T) {
+	for _, accepted := range []string{"auto", "api", "files"} {
+		_, loadError := Load(environmentFrom(map[string]string{
+			"GLUETUN_CONTAINER": "gluetun",
+			"WATCHED":           "app",
+			"GLUETUN_SOURCE":    accepted,
+		}))
+		if loadError != nil {
+			testCase.Fatalf("%q doit être accepté : %v", accepted, loadError)
+		}
+	}
+	_, loadError := Load(environmentFrom(map[string]string{
+		"GLUETUN_CONTAINER": "gluetun",
+		"WATCHED":           "app",
+		"GLUETUN_SOURCE":    "autre",
+	}))
+	if loadError == nil {
+		testCase.Fatal("une valeur inconnue doit être refusée")
+	}
+}

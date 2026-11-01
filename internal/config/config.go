@@ -7,13 +7,14 @@ import (
 )
 
 const (
-	defaultGrace        = 5 * time.Minute
-	defaultInterval     = 10 * time.Second
-	defaultThreshold    = 3
-	defaultPingTargets  = "9.9.9.9,1.1.1.1"
-	defaultPublicIPFile = "/tmp/gluetun/ip"
-	defaultPortFile     = "/tmp/gluetun/forwarded_port"
-	defaultControlURL   = "http://gluetun:8000"
+	defaultGrace         = 5 * time.Minute
+	defaultInterval      = 10 * time.Second
+	defaultThreshold     = 3
+	defaultPingTargets   = "9.9.9.9,1.1.1.1"
+	defaultPublicIPFile  = "/tmp/gluetun/ip"
+	defaultPortFile      = "/tmp/gluetun/forwarded_port"
+	defaultControlSource = "auto"
+	defaultControlURL    = "http://gluetun:8000"
 )
 
 type Watched struct {
@@ -36,6 +37,7 @@ type Config struct {
 	ControlPassword  string
 	PublicIPFile     string
 	PortFile         string
+	ControlSource    string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -89,6 +91,10 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	loaded.PublicIPFile = valueOrDefault(getenv("GLUETUN_PUBLIC_IP_FILE"), defaultPublicIPFile)
 	loaded.PortFile = valueOrDefault(getenv("GLUETUN_PORT_FILE"), defaultPortFile)
+	loaded.ControlSource = valueOrDefault(getenv("GLUETUN_SOURCE"), defaultControlSource)
+	if !isKnownControlSource(loaded.ControlSource) {
+		return Config{}, errors.New("GLUETUN_SOURCE doit valoir auto, api ou files")
+	}
 	loaded.ControlURL = valueOrDefault(getenv("GLUETUN_CONTROL_URL"), defaultControlURL)
 	return loaded, nil
 }

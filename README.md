@@ -32,6 +32,7 @@ Après un redémarrage, la cible n'est plus testée pendant son délai de grâce
 | `GLUETUN_GRACE` | valeur de `GRACE` | Délai de grâce de Gluetun |
 | `GLUETUN_PUBLIC_IP_FILE` | `/tmp/gluetun/ip` | Fichier de l'IP publique, lu dans le conteneur Gluetun |
 | `GLUETUN_PORT_FILE` | `/tmp/gluetun/forwarded_port` | Fichier du port forwardé, lu dans le conteneur Gluetun |
+| `GLUETUN_SOURCE` | `auto` | Origine de l'IP publique et du port : `auto` (fichiers puis API), `api` (API seule), `files` (fichiers seuls) |
 | `GLUETUN_CONTROL_URL` | `http://gluetun:8000` | API de contrôle de Gluetun |
 | `GLUETUN_API_KEY` | vide | Clé d'API (en-tête `X-API-Key`) |
 | `GLUETUN_USER` / `GLUETUN_PASSWORD` | vides | Authentification basique, exclusive avec la clé d'API |

@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
+
+const maxErrorBodyBytes = 200
 
 var ErrNoForwardedPort = errors.New("aucun port forwardé")
 
@@ -62,7 +65,8 @@ func (client *Client) getJSON(requestContext context.Context, path string, desti
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s : statut %d", path, response.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
+		return fmt.Errorf("%s : statut %d : %s", path, response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return json.NewDecoder(response.Body).Decode(destination)
 }

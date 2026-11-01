@@ -54,7 +54,7 @@ func main() {
 	}
 
 	fileSource := gluetun.NewFileSource(dockerRuntime, settings.GluetunContainer, settings.PublicIPFile, settings.PortFile)
-	portSource := gluetun.NewFallback(fileSource, controlClient)
+	portSource := gluetun.SelectSource(settings.ControlSource, fileSource, controlClient)
 
 	runningMonitor := monitor.New(settings, dockerRuntime, portSource, dial, time.Now, logger)
 
