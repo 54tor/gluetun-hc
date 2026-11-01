@@ -38,7 +38,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	dockerRuntime := docker.NewRuntime(dockerClient)
+	ownHostname, _ := os.Hostname()
+	dockerRuntime := docker.NewRuntime(dockerClient, ownHostname)
 	controlClient := gluetun.NewClient(settings.ControlURL, gluetun.Credentials{
 		APIKey:   settings.ControlAPIKey,
 		Username: settings.ControlUsername,

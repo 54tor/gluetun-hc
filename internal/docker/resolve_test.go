@@ -22,3 +22,17 @@ func TestChooseContainerNameRejectsAmbiguousServiceName(testCase *testing.T) {
 		testCase.Fatal("deux projets avec le même service doivent être refusés")
 	}
 }
+
+func TestServiceFiltersAddProjectWhenKnown(testCase *testing.T) {
+	filters := serviceFilters("gluetun", "stack-a")
+	if !filters["label"]["com.docker.compose.service=gluetun"] || !filters["label"]["com.docker.compose.project=stack-a"] {
+		testCase.Fatalf("filtres inattendus : %v", filters)
+	}
+}
+
+func TestServiceFiltersOmitProjectWhenUnknown(testCase *testing.T) {
+	filters := serviceFilters("gluetun", "")
+	if len(filters["label"]) != 1 {
+		testCase.Fatalf("seul le service est filtré : %v", filters)
+	}
+}

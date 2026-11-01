@@ -8,7 +8,10 @@ import (
 	"github.com/moby/moby/client"
 )
 
-const composeServiceLabel = "com.docker.compose.service"
+const (
+	composeServiceLabel = "com.docker.compose.service"
+	composeProjectLabel = "com.docker.compose.project"
+)
 
 func chooseContainerName(requested string, serviceMatches []string) (string, error) {
 	switch len(serviceMatches) {
@@ -21,10 +24,36 @@ func chooseContainerName(requested string, serviceMatches []string) (string, err
 	}
 }
 
+func serviceFilters(requested, project string) client.Filters {
+	filters := client.Filters{}.Add("label", composeServiceLabel+"="+requested)
+	if project != "" {
+		filters = filters.Add("label", composeProjectLabel+"="+project)
+	}
+	return filters
+}
+
+func (runtime *Runtime) ownProject(operationContext context.Context) string {
+	if runtime.ownContainerID == "" {
+		return ""
+	}
+	if runtime.cachedProject != "" {
+		return runtime.cachedProject
+	}
+	listed, listError := runtime.dockerClient.ContainerList(operationContext, client.ContainerListOptions{
+		All:     true,
+		Filters: client.Filters{}.Add("id", runtime.ownContainerID),
+	})
+	if listError != nil || len(listed.Items) == 0 {
+		return ""
+	}
+	runtime.cachedProject = listed.Items[0].Labels[composeProjectLabel]
+	return runtime.cachedProject
+}
+
 func (runtime *Runtime) resolve(operationContext context.Context, requested string) (string, error) {
 	listed, listError := runtime.dockerClient.ContainerList(operationContext, client.ContainerListOptions{
 		All:     true,
-		Filters: client.Filters{}.Add("label", composeServiceLabel+"="+requested),
+		Filters: serviceFilters(requested, runtime.ownProject(operationContext)),
 	})
 	if listError != nil {
 		return "", listError

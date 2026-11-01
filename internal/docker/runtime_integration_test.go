@@ -40,7 +40,7 @@ func startIntegrationContainer(testCase *testing.T) *Runtime {
 	if clientError != nil {
 		testCase.Fatal(clientError)
 	}
-	return NewRuntime(dockerClient)
+	return NewRuntime(dockerClient, "")
 }
 
 func TestIntegrationReadFile(testCase *testing.T) {
@@ -95,5 +95,38 @@ func TestIntegrationResolvesComposeServiceName(testCase *testing.T) {
 	running, inspectError = runtime.IsRunning(context.Background(), integrationContainerName)
 	if inspectError != nil || !running {
 		testCase.Fatalf("un nom de conteneur reste accepté : %v %v", running, inspectError)
+	}
+}
+
+func TestIntegrationServiceNameIsScopedToOwnProject(testCase *testing.T) {
+	runtime := startIntegrationContainer(testCase)
+	names := []string{"gluetun-hc-scope-own", "gluetun-hc-scope-other"}
+	projects := []string{"gluetun-hc-project-own", "gluetun-hc-project-other"}
+	for position, name := range names {
+		dockerCommandOnRealSocket("rm", "-f", name).Run()
+		startCommand := dockerCommandOnRealSocket("run", "-d", "--name", name,
+			"--label", "com.docker.compose.service=gluetun-hc-scoped",
+			"--label", "com.docker.compose.project="+projects[position],
+			"alpine:latest", "sleep", "300")
+		if output, startError := startCommand.CombinedOutput(); startError != nil {
+			testCase.Fatalf("démarrage impossible : %v : %s", startError, output)
+		}
+		containerName := name
+		testCase.Cleanup(func() { dockerCommandOnRealSocket("rm", "-f", containerName).Run() })
+	}
+
+	_, ambiguousError := runtime.IsRunning(context.Background(), "gluetun-hc-scoped")
+	if ambiguousError == nil {
+		testCase.Fatal("sans projet connu, deux correspondances sont ambiguës")
+	}
+
+	identifier, inspectError := dockerCommandOnRealSocket("inspect", "-f", "{{.Id}}", "gluetun-hc-scope-own").Output()
+	if inspectError != nil {
+		testCase.Fatal(inspectError)
+	}
+	scoped := NewRuntime(runtime.dockerClient, strings.TrimSpace(string(identifier))[:12])
+	running, scopedError := scoped.IsRunning(context.Background(), "gluetun-hc-scoped")
+	if scopedError != nil || !running {
+		testCase.Fatalf("dans son projet, le service doit être résolu : %v %v", running, scopedError)
 	}
 }

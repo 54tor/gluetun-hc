@@ -31,11 +31,13 @@ func wrapUnavailable(dockerError error) error {
 const execPollInterval = 200 * time.Millisecond
 
 type Runtime struct {
-	dockerClient *client.Client
+	dockerClient   *client.Client
+	ownContainerID string
+	cachedProject  string
 }
 
-func NewRuntime(dockerClient *client.Client) *Runtime {
-	return &Runtime{dockerClient: dockerClient}
+func NewRuntime(dockerClient *client.Client, ownContainerID string) *Runtime {
+	return &Runtime{dockerClient: dockerClient, ownContainerID: ownContainerID}
 }
 
 func (runtime *Runtime) Exec(operationContext context.Context, requested string, command []string) (int, error) {

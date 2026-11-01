@@ -49,7 +49,7 @@ Le moniteur utilise l'API Docker pour inspecter, exécuter (`exec`) et redémarr
 
 - `DOCKER_GID` (identifiant du groupe `docker` de l'hôte) doit être défini : `DOCKER_GID=$(stat -c %g /var/run/docker.sock)`.
 - Les expressions `-allowGET` et `-allowPOST` du proxy nomment les conteneurs autorisés (`gluetun`, `app`) : les adapter à `GLUETUN_CONTAINER` et `WATCHED`. Le proxy autorise aussi `GET /containers/json` (liste) pour la résolution des noms.
-- `GLUETUN_CONTAINER` et `WATCHED` acceptent un nom de conteneur ou un nom de service Compose (label `com.docker.compose.service`). Si un nom de service correspond à plusieurs conteneurs (plusieurs projets), il est refusé : utiliser le nom du conteneur. Les règles du proxy portent sur le nom réel du conteneur, d'où les `container_name` de l'exemple.
+- `GLUETUN_CONTAINER` et `WATCHED` acceptent un nom de conteneur ou un nom de service Compose (label `com.docker.compose.service`). Un nom de service est résolu dans le projet Compose du moniteur (lu depuis son propre conteneur, via son nom d'hôte, donc ne pas définir `hostname:` sur lui). Si le projet est inconnu et que le nom correspond à plusieurs conteneurs, il est refusé : utiliser le nom du conteneur. Les règles du proxy portent sur le nom réel du conteneur, d'où les `container_name` de l'exemple.
 - Le réseau `docker-proxy` est interne : le proxy n'est joignable que par le moniteur.
 
 ## Limites
