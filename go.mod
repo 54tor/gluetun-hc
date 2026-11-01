@@ -19,6 +19,9 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hekmon/cunits/v2 v2.1.1 // indirect
+	github.com/hekmon/transmissionrpc/v3 v3.1.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/moby/api v1.56.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect

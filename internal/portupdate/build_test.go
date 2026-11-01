@@ -9,7 +9,7 @@ import (
 )
 
 func TestFromConfigQBittorrentCanReadCurrentPort(testCase *testing.T) {
-	updater := FromConfig(config.PortUpdate{Mode: "qbittorrent", URL: "http://app:8080"}, http.DefaultClient)
+	updater, _ := FromConfig(config.PortUpdate{Mode: "qbittorrent", URL: "http://app:8080"}, http.DefaultClient)
 	if _, canRead := updater.(interface {
 		CurrentPort(operationContext context.Context) (int, error)
 	}); !canRead {
@@ -18,10 +18,19 @@ func TestFromConfigQBittorrentCanReadCurrentPort(testCase *testing.T) {
 }
 
 func TestFromConfigHTTPCannotReadCurrentPort(testCase *testing.T) {
-	updater := FromConfig(config.PortUpdate{Mode: "http", URL: "http://app/port", Method: "POST"}, http.DefaultClient)
+	updater, _ := FromConfig(config.PortUpdate{Mode: "http", URL: "http://app/port", Method: "POST"}, http.DefaultClient)
 	if _, canRead := updater.(interface {
 		CurrentPort(operationContext context.Context) (int, error)
 	}); canRead {
 		testCase.Fatal("le mode HTTP générique ne lit pas le port")
+	}
+}
+
+func TestFromConfigTransmissionCanReadCurrentPort(testCase *testing.T) {
+	updater, _ := FromConfig(config.PortUpdate{Mode: "transmission", URL: "http://app:9091"}, http.DefaultClient)
+	if _, canRead := updater.(interface {
+		CurrentPort(operationContext context.Context) (int, error)
+	}); !canRead {
+		testCase.Fatal("le profil Transmission doit pouvoir lire le port actuel")
 	}
 }

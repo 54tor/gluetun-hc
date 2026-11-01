@@ -43,15 +43,16 @@ Quand Gluetun obtient un port forwardé, le moniteur peut l'appliquer à une app
 
 - Il lit le port de Gluetun (fichier ou API, voir `GLUETUN_SOURCE`) à chaque contrôle.
 - **qBittorrent** : il lit d'abord le port d'écoute actuel et n'écrit que s'il diffère. Un qBittorrent redémarré avec une configuration perdue est donc corrigé sans autre déclencheur.
+- **Transmission** : même principe que qBittorrent, via son RPC (`peer-port`), avec la poignée de main d'identifiant de session gérée par la bibliothèque. `PORT_UPDATE_URL` peut être l'adresse de base (`http://transmission:9091`, le chemin `/transmission/rpc` est ajouté) ou l'URL complète du RPC. Désactiver `peer-port-random-on-start` dans la configuration de Transmission, sinon il retire le port au démarrage.
 - **HTTP générique** : pas de lecture possible, le port est appliqué au démarrage du moniteur, à chaque changement et après chaque redémarrage de la cible ; un échec est retenté au contrôle suivant.
 - Tant que le port n'est pas appliqué, le contrôle entrant est suspendu : la cible n'est jamais redémarrée à cause d'un port qui n'écoute pas encore.
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `PORT_UPDATE_MODE` | vide (désactivé) | `qbittorrent` ou `http` |
-| `PORT_UPDATE_URL` | obligatoire | qBittorrent : URL de l'interface web (ex. `http://qbittorrent:8080`) ; `http` : URL de la requête, `{{port}}` est remplacé |
+| `PORT_UPDATE_MODE` | vide (désactivé) | `qbittorrent`, `transmission` ou `http` |
+| `PORT_UPDATE_URL` | obligatoire | qBittorrent : URL de l'interface web (ex. `http://qbittorrent:8080`) ; `transmission` : adresse du RPC ; `http` : URL de la requête, `{{port}}` est remplacé |
 | `PORT_UPDATE_CONTAINER` | `INBOUND_CONTAINER` | Conteneur cible (doit figurer dans `WATCHED`) |
-| `PORT_UPDATE_USER` / `PORT_UPDATE_PASSWORD` | vides | qBittorrent : identifiants de l'interface web |
+| `PORT_UPDATE_USER` / `PORT_UPDATE_PASSWORD` | vides | qBittorrent et Transmission : identifiants de l'interface web ou du RPC |
 | `PORT_UPDATE_METHOD` | `POST` | `http` : méthode |
 | `PORT_UPDATE_HEADERS` | vide | `http` : en-têtes, un `Nom: valeur` par ligne, `{{port}}` remplacé |
 | `PORT_UPDATE_BODY` | vide | `http` : corps, `{{port}}` remplacé |

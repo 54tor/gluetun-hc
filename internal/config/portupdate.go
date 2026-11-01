@@ -24,8 +24,8 @@ func loadPortUpdate(getenv func(string) string, inboundContainer string, watched
 	if update.Mode == "" {
 		return update, nil
 	}
-	if update.Mode != "qbittorrent" && update.Mode != "http" {
-		return PortUpdate{}, errors.New("PORT_UPDATE_MODE doit valoir qbittorrent ou http")
+	if !isKnownPortUpdateMode(update.Mode) {
+		return PortUpdate{}, errors.New("PORT_UPDATE_MODE doit valoir qbittorrent, transmission ou http")
 	}
 
 	update.URL = getenv("PORT_UPDATE_URL")
@@ -64,4 +64,8 @@ func parseHeaders(rawHeaders string) (map[string]string, error) {
 		headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
 	}
 	return headers, nil
+}
+
+func isKnownPortUpdateMode(mode string) bool {
+	return mode == "qbittorrent" || mode == "transmission" || mode == "http"
 }

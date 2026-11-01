@@ -27,7 +27,10 @@ func buildMonitor(settings config.Config, logger *slog.Logger) (*monitor.Monitor
 
 	runningMonitor := monitor.New(settings, dockerRuntime, buildPortSource(settings, dockerRuntime), time.Now, logger)
 	if settings.PortUpdate.Mode != "" {
-		updater := portupdate.FromConfig(settings.PortUpdate, &http.Client{Timeout: controlAPITimeout})
+		updater, updaterError := portupdate.FromConfig(settings.PortUpdate, &http.Client{Timeout: controlAPITimeout})
+		if updaterError != nil {
+			return nil, updaterError
+		}
 		runningMonitor.EnablePortSync(updater, settings.PortUpdate.Container)
 	}
 	return runningMonitor, nil

@@ -82,3 +82,14 @@ func TestPortUpdateRejectsInvalidSettings(testCase *testing.T) {
 		}
 	}
 }
+
+func TestPortUpdateTransmissionModeAccepted(testCase *testing.T) {
+	loaded, loadError := Load(portUpdateEnvironment(map[string]string{
+		"PORT_UPDATE_MODE":      "transmission",
+		"PORT_UPDATE_URL":       "http://app:9091/transmission/rpc",
+		"PORT_UPDATE_CONTAINER": "app",
+	}))
+	if loadError != nil || loaded.PortUpdate.Mode != "transmission" {
+		testCase.Fatalf("mode %q, erreur %v", loaded.PortUpdate.Mode, loadError)
+	}
+}
