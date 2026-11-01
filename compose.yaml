@@ -45,6 +45,11 @@ services:
   gluetun-hc:
     build: .
     container_name: gluetun-hc
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
     environment:
       DOCKER_HOST: tcp://socket-proxy:2375
       GLUETUN_CONTAINER: gluetun
