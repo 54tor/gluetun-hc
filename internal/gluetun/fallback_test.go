@@ -3,6 +3,7 @@ package gluetun
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -48,5 +49,18 @@ func TestFallbackKeepsNoForwardedPortAnswer(testCase *testing.T) {
 	_, readError := NewFallback(primary, secondary).ForwardedPort(context.Background())
 	if !errors.Is(readError, ErrNoForwardedPort) || secondary.portCalls != 0 {
 		testCase.Fatalf("erreur %v, appels secondaires %d", readError, secondary.portCalls)
+	}
+}
+
+func TestFallbackReportsBothErrorsWhenBothFail(testCase *testing.T) {
+	primary := &fakeSource{failure: errors.New("fichier absent")}
+	secondary := &fakeSource{failure: errors.New("statut 401")}
+	_, readError := NewFallback(primary, secondary).ForwardedPort(context.Background())
+	if readError == nil {
+		testCase.Fatal("erreur attendue")
+	}
+	message := readError.Error()
+	if !strings.Contains(message, "fichier absent") || !strings.Contains(message, "statut 401") {
+		testCase.Fatalf("les deux causes doivent apparaître : %q", message)
 	}
 }
