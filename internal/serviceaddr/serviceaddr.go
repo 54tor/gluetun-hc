@@ -23,7 +23,11 @@ func NewHTTPClient(timeout time.Duration, resolver Resolver) *http.Client {
 			return dialer.DialContext(dialContext, network, resolvedAddress)
 		},
 	}
-	return &http.Client{Timeout: timeout, Transport: transport}
+	return &http.Client{
+		Timeout:       timeout,
+		Transport:     transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 func resolveDialAddress(operationContext context.Context, resolver Resolver, address string) (string, error) {

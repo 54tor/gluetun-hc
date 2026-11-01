@@ -84,3 +84,20 @@ func TestRewriteURLKeepsNonServiceHosts(testCase *testing.T) {
 		testCase.Fatalf("hôte modifié : %q", parsed.Host)
 	}
 }
+
+func TestSharedClientDoesNotFollowRedirects(testCase *testing.T) {
+	followed := false
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) { followed = true }))
+	testCase.Cleanup(target.Close)
+	redirector := httptest.NewServer(http.RedirectHandler(target.URL, http.StatusFound))
+	testCase.Cleanup(redirector.Close)
+
+	response, requestError := NewHTTPClient(time.Second, nil).Get(redirector.URL)
+	if requestError != nil {
+		testCase.Fatal(requestError)
+	}
+	response.Body.Close()
+	if followed || response.StatusCode != http.StatusFound {
+		testCase.Fatalf("la redirection ne doit pas être suivie (statut %d, suivie %v)", response.StatusCode, followed)
+	}
+}
