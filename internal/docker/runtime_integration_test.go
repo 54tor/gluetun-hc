@@ -74,3 +74,26 @@ func TestIntegrationIsRunningFollowsContainerState(testCase *testing.T) {
 		testCase.Fatalf("doit être arrêté : %v %v", running, inspectError)
 	}
 }
+
+func TestIntegrationResolvesComposeServiceName(testCase *testing.T) {
+	runtime := startIntegrationContainer(testCase)
+	const serviceName = "gluetun-hc-resolve-check"
+	dockerCommandOnRealSocket("rm", "-f", "gluetun-hc-resolve-container").Run()
+	startCommand := dockerCommandOnRealSocket("run", "-d", "--name", "gluetun-hc-resolve-container",
+		"--label", "com.docker.compose.service="+serviceName, "alpine:latest", "sleep", "300")
+	if output, startError := startCommand.CombinedOutput(); startError != nil {
+		testCase.Fatalf("démarrage impossible : %v : %s", startError, output)
+	}
+	testCase.Cleanup(func() {
+		dockerCommandOnRealSocket("rm", "-f", "gluetun-hc-resolve-container").Run()
+	})
+
+	running, inspectError := runtime.IsRunning(context.Background(), serviceName)
+	if inspectError != nil || !running {
+		testCase.Fatalf("le nom de service doit être résolu : %v %v", running, inspectError)
+	}
+	running, inspectError = runtime.IsRunning(context.Background(), integrationContainerName)
+	if inspectError != nil || !running {
+		testCase.Fatalf("un nom de conteneur reste accepté : %v %v", running, inspectError)
+	}
+}

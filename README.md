@@ -47,7 +47,8 @@ L'IP publique et le port forwardé sont lus d'abord dans les fichiers de Gluetun
 Le moniteur utilise l'API Docker pour inspecter, exécuter (`exec`) et redémarrer des conteneurs. Il lit `DOCKER_HOST` : l'exemple `compose.yaml` passe par un proxy de socket (`wollomatic/socket-proxy`) qui n'autorise que ces appels, et uniquement sur Gluetun et les conteneurs surveillés. Un accès direct au socket équivaut à un accès root à l'hôte.
 
 - `DOCKER_GID` (identifiant du groupe `docker` de l'hôte) doit être défini : `DOCKER_GID=$(stat -c %g /var/run/docker.sock)`.
-- Les expressions `-allowGET` et `-allowPOST` du proxy nomment les conteneurs autorisés (`gluetun`, `app`) : les adapter à `GLUETUN_CONTAINER` et `WATCHED`.
+- Les expressions `-allowGET` et `-allowPOST` du proxy nomment les conteneurs autorisés (`gluetun`, `app`) : les adapter à `GLUETUN_CONTAINER` et `WATCHED`. Le proxy autorise aussi `GET /containers/json` (liste) pour la résolution des noms.
+- `GLUETUN_CONTAINER` et `WATCHED` acceptent un nom de conteneur ou un nom de service Compose (label `com.docker.compose.service`). Si un nom de service correspond à plusieurs conteneurs (plusieurs projets), il est refusé : utiliser le nom du conteneur. Les règles du proxy portent sur le nom réel du conteneur, d'où les `container_name` de l'exemple.
 - Le réseau `docker-proxy` est interne : le proxy n'est joignable que par le moniteur.
 
 ## Limites

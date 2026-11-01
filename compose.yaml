@@ -1,6 +1,7 @@
 services:
   gluetun:
     image: qmcgaw/gluetun:latest
+    container_name: gluetun
     cap_add:
       - NET_ADMIN
     devices:
@@ -12,6 +13,7 @@ services:
 
   app:
     image: alpine:latest
+    container_name: app
     network_mode: service:gluetun
     command: sleep infinity
     depends_on:
@@ -32,7 +34,7 @@ services:
       - '-listenip=0.0.0.0'
       - '-allowfrom=gluetun-hc'
       - '-allowHEAD=(/v1\..{1,2})?/_ping'
-      - '-allowGET=(/v1\..{1,2})?/(_ping|containers/(gluetun|app)/json|exec/[^/]+/json)'
+      - '-allowGET=(/v1\..{1,2})?/(_ping|containers/json|containers/(gluetun|app)/json|exec/[^/]+/json)'
       - '-allowPOST=(/v1\..{1,2})?/(containers/(gluetun|app)/(exec|restart)|exec/[^/]+/start)'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

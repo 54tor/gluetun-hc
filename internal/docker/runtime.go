@@ -38,7 +38,11 @@ func NewRuntime(dockerClient *client.Client) *Runtime {
 	return &Runtime{dockerClient: dockerClient}
 }
 
-func (runtime *Runtime) Exec(operationContext context.Context, container string, command []string) (int, error) {
+func (runtime *Runtime) Exec(operationContext context.Context, requested string, command []string) (int, error) {
+	container, resolveError := runtime.resolve(operationContext, requested)
+	if resolveError != nil {
+		return 0, resolveError
+	}
 	created, dockerError := runtime.dockerClient.ExecCreate(operationContext, container, client.ExecCreateOptions{Cmd: command})
 	if dockerError != nil {
 		return 0, wrapUnavailable(dockerError)
@@ -67,12 +71,20 @@ func (runtime *Runtime) Exec(operationContext context.Context, container string,
 	}
 }
 
-func (runtime *Runtime) Restart(operationContext context.Context, container string) error {
+func (runtime *Runtime) Restart(operationContext context.Context, requested string) error {
+	container, resolveError := runtime.resolve(operationContext, requested)
+	if resolveError != nil {
+		return resolveError
+	}
 	_, dockerError := runtime.dockerClient.ContainerRestart(operationContext, container, client.ContainerRestartOptions{})
 	return dockerError
 }
 
-func (runtime *Runtime) IsRunning(operationContext context.Context, container string) (bool, error) {
+func (runtime *Runtime) IsRunning(operationContext context.Context, requested string) (bool, error) {
+	container, resolveError := runtime.resolve(operationContext, requested)
+	if resolveError != nil {
+		return false, resolveError
+	}
 	inspected, dockerError := runtime.dockerClient.ContainerInspect(operationContext, container, client.ContainerInspectOptions{})
 	if dockerError != nil {
 		return false, wrapUnavailable(dockerError)

@@ -10,7 +10,11 @@ import (
 	"github.com/moby/moby/client"
 )
 
-func (runtime *Runtime) ReadFile(operationContext context.Context, container, path string) (string, error) {
+func (runtime *Runtime) ReadFile(operationContext context.Context, requested, path string) (string, error) {
+	container, resolveError := runtime.resolve(operationContext, requested)
+	if resolveError != nil {
+		return "", resolveError
+	}
 	created, dockerError := runtime.dockerClient.ExecCreate(operationContext, container, client.ExecCreateOptions{
 		Cmd:          []string{"cat", path},
 		AttachStdout: true,
