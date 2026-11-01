@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +38,20 @@ func TestHTTPUpdaterRejectsNon2xx(testCase *testing.T) {
 	updater := NewHTTPUpdater("POST", server.URL, nil, "", server.Client())
 	if applyError := updater.Apply(context.Background(), 5914); applyError == nil {
 		testCase.Fatal("un statut 403 doit être une erreur")
+	}
+}
+
+func TestHTTPUpdaterErrorsDoNotLeakQueryString(testCase *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+	}))
+	closedURL := server.URL
+	server.Close()
+
+	for _, target := range []string{closedURL + "/p?token=SECRET", server.URL + "/p?token=SECRET"} {
+		applyError := NewHTTPUpdater("POST", target, nil, "", http.DefaultClient).Apply(context.Background(), 5914)
+		if applyError == nil || strings.Contains(applyError.Error(), "SECRET") {
+			testCase.Fatalf("erreur absente ou fuyant le jeton : %v", applyError)
+		}
 	}
 }

@@ -2,9 +2,11 @@ package portupdate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -37,12 +39,24 @@ func (updater *HTTPUpdater) Apply(operationContext context.Context, port int) er
 
 	response, doError := updater.httpClient.Do(request)
 	if doError != nil {
+		var urlError *url.Error
+		if errors.As(doError, &urlError) {
+			return fmt.Errorf("%s %s : %w", updater.method, redactedTarget(updater.url), urlError.Err)
+		}
 		return doError
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 200))
-		return fmt.Errorf("%s %s : statut %d : %s", updater.method, updater.url, response.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("%s %s : statut %d : %s", updater.method, redactedTarget(updater.url), response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+func redactedTarget(rawURL string) string {
+	parsed, parseError := url.Parse(rawURL)
+	if parseError != nil || parsed.Host == "" {
+		return "<url invalide>"
+	}
+	return parsed.Scheme + "://" + parsed.Host
 }
