@@ -3,68 +3,70 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/moby/moby/client"
-
 	"gluetun-hc/internal/config"
-	"gluetun-hc/internal/docker"
-	"gluetun-hc/internal/gluetun"
+	"gluetun-hc/internal/healthserver"
 	"gluetun-hc/internal/monitor"
-	"gluetun-hc/internal/portupdate"
-)
-
-const (
-	controlAPITimeout = 5 * time.Second
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(runHealthcheck())
+	}
+	os.Exit(runMonitor())
+}
+
+func runHealthcheck() int {
+	if checkError := healthserver.Check(healthserver.AddressFromEnvironment(os.Getenv)); checkError != nil {
+		os.Stderr.WriteString("pas sain : " + checkError.Error() + "\n")
+		return 1
+	}
+	return 0
+}
+
+func runMonitor() int {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	settings, loadError := config.Load(os.Getenv)
 	if loadError != nil {
 		logger.Error("configuration invalide", "error", loadError)
-		os.Exit(1)
+		return 1
 	}
 
-	dockerClient, dockerError := client.New(client.FromEnv)
-	if dockerError != nil {
-		logger.Error("client Docker indisponible", "error", dockerError)
-		os.Exit(1)
-	}
-
-	ownHostname, _ := os.Hostname()
-	dockerRuntime := docker.NewRuntime(dockerClient, ownHostname)
-	controlClient := gluetun.NewClient(settings.ControlURL, gluetun.Credentials{
-		APIKey:   settings.ControlAPIKey,
-		Username: settings.ControlUsername,
-		Password: settings.ControlPassword,
-	}, &http.Client{Timeout: controlAPITimeout})
-	fileSource := gluetun.NewFileSource(dockerRuntime, settings.GluetunContainer, settings.PublicIPFile, settings.PortFile)
-	portSource := gluetun.SelectSource(settings.ControlSource, fileSource, controlClient)
-
-	runningMonitor := monitor.New(settings, dockerRuntime, portSource, time.Now, logger)
-
-	if settings.PortUpdate.Mode != "" {
-		updater := portupdate.FromConfig(settings.PortUpdate, &http.Client{Timeout: controlAPITimeout})
-		runningMonitor.EnablePortSync(updater, settings.PortUpdate.Container)
+	runningMonitor, buildError := buildMonitor(settings, logger)
+	if buildError != nil {
+		logger.Error("initialisation impossible", "error", buildError)
+		return 1
 	}
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	ticker := time.NewTicker(settings.Interval)
-	defer ticker.Stop()
+	go serveHealth(shutdownContext, runningMonitor, logger)
 	logger.Info("moniteur démarré", "gluetun", settings.GluetunContainer, "watched", len(settings.Watched))
+	runLoop(shutdownContext, runningMonitor, settings.Interval)
+	logger.Info("arrêt")
+	return 0
+}
+
+func serveHealth(serveContext context.Context, runningMonitor *monitor.Monitor, logger *slog.Logger) {
+	address := healthserver.AddressFromEnvironment(os.Getenv)
+	if serveError := healthserver.Serve(serveContext, address, runningMonitor); serveError != nil {
+		logger.Error("serveur de santé arrêté", "address", address, "error", serveError)
+	}
+}
+
+func runLoop(loopContext context.Context, runningMonitor *monitor.Monitor, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 	for {
-		runningMonitor.Tick(shutdownContext)
+		runningMonitor.Tick(loopContext)
 		select {
-		case <-shutdownContext.Done():
-			logger.Info("arrêt")
+		case <-loopContext.Done():
 			return
 		case <-ticker.C:
 		}

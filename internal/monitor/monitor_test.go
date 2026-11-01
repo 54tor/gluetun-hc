@@ -129,6 +129,7 @@ func newBench(watched []config.Watched, inboundContainer string) *testBench {
 		Watched:          watched,
 		InboundContainer: inboundContainer,
 		PingTargets:      []string{"9.9.9.9", "1.1.1.1"},
+		Interval:         10 * time.Second,
 		FailThreshold:    2,
 		RiseThreshold:    2,
 	}

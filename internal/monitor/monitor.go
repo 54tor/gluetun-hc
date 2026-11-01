@@ -20,6 +20,7 @@ type Monitor struct {
 	watchedTargets []*target
 	execTimeout    time.Duration
 	portSync       *portSync
+	verdict        gluetunVerdict
 }
 
 func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, now func() time.Time, logger *slog.Logger) *Monitor {
@@ -60,6 +61,7 @@ func (monitor *Monitor) Tick(operationContext context.Context) {
 func (monitor *Monitor) gluetunAllowsChecks(operationContext context.Context, result probeResult, currentTime time.Time) bool {
 	if result.isCounted() {
 		monitor.gluetunTarget.outbound.Record(result == probeReachable)
+		monitor.verdict.record(result == probeReachable, currentTime)
 	}
 	if !monitor.gluetunTarget.outbound.Healthy() {
 		monitor.logger.Warn("Gluetun n'a plus de connexion, redémarrage", "container", monitor.gluetunTarget.name)
@@ -119,6 +121,9 @@ func (monitor *Monitor) restart(operationContext context.Context, restarted *tar
 	restarted.outbound.Reset()
 	restarted.inbound.Reset()
 	restarted.graceUntil = currentTime.Add(restarted.grace)
+	if restarted == monitor.gluetunTarget {
+		monitor.verdict.record(false, currentTime)
+	}
 	monitor.markPortSyncAfterRestart(restarted.name)
 	return true
 }

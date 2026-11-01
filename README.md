@@ -58,6 +58,20 @@ Quand Gluetun obtient un port forwardé, le moniteur peut l'appliquer à une app
 
 L'interface web de la cible est jointe depuis le réseau Docker : elle partage le namespace de Gluetun, donc son nom d'hôte est celui du conteneur Gluetun (ex. `http://gluetun:8080`).
 
+## Santé du conteneur
+
+L'image déclare un `HEALTHCHECK` Docker : le conteneur `gluetun-hc` est `healthy` quand le dernier `ping` exécuté dans Gluetun vers une IP publique (`PING_TARGETS`, jamais un nom DNS) a réussi il y a moins de trois intervalles. Il est `unhealthy` avant la première sonde, pendant le délai de grâce qui suit un redémarrage de Gluetun, et dès qu'une sonde échoue, même sous le seuil de redémarrage (Docker applique ses propres tentatives : `--retries=3`).
+
+Un autre service peut attendre cet état :
+
+```yaml
+depends_on:
+  gluetun-hc:
+    condition: service_healthy
+```
+
+Le moniteur écoute sur `HEALTH_ADDRESS` (défaut `127.0.0.1:8081`, joignable seulement depuis le conteneur) et la commande `gluetun-hc healthcheck` l'interroge.
+
 ## Intégration continue
 
 `.github/workflows/ci.yml` lance `go vet` et `go test` à chaque push et pull request, puis construit l'image en `linux/amd64` et `linux/arm64`. Hors pull request, l'image est publiée sur `ghcr.io/<propriétaire>/gluetun-hc` : `latest` sur `main`, la version sur un tag `v*`, et le SHA du commit.
