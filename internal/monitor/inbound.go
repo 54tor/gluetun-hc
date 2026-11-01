@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"strconv"
 	"time"
 
@@ -63,6 +64,11 @@ func (monitor *Monitor) inboundAddress(operationContext context.Context) (addres
 	}
 	if publicIP == "" {
 		monitor.logger.Warn("IP publique vide, contrôle entrant sauté")
+		return "", false
+	}
+
+	if _, parseError := netip.ParseAddr(publicIP); parseError != nil {
+		monitor.logger.Warn("IP publique invalide, contrôle entrant sauté", "error", parseError)
 		return "", false
 	}
 

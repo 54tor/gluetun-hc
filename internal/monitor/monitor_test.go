@@ -504,3 +504,13 @@ func TestInboundNetcatMissingIsNotCounted(testCase *testing.T) {
 		testCase.Fatal("un nc absent n'est pas une panne entrante")
 	}
 }
+
+func TestInboundSkippedWhenPublicIPIsNotAnIP(testCase *testing.T) {
+	bench := newBench(singleApp(), "app")
+	bench.controlAPI.publicIP = "-l"
+	bench.runtime.netcatExitCode = 1
+	bench.tick(5)
+	if len(bench.runtime.netcatTargets) != 0 || bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("une IP publique invalide ne doit jamais atteindre nc")
+	}
+}
