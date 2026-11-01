@@ -22,6 +22,9 @@ type fakeRuntime struct {
 	pingedTargets           []string
 	restartedContainers     []string
 	blockUntilCancelled     bool
+	netcatExitCode          int
+	netcatContainers        []string
+	netcatTargets           []string
 	restartFailuresLeft     map[string]int
 	stoppedContainers       map[string]bool
 	inspectErrorByContainer map[string]error
@@ -45,6 +48,11 @@ func (runtime *fakeRuntime) IsRunning(operationContext context.Context, containe
 }
 
 func (runtime *fakeRuntime) Exec(operationContext context.Context, container string, command []string) (int, error) {
+	if command[0] == "nc" {
+		runtime.netcatContainers = append(runtime.netcatContainers, container)
+		runtime.netcatTargets = append(runtime.netcatTargets, command[len(command)-2]+":"+command[len(command)-1])
+		return runtime.netcatExitCode, nil
+	}
 	runtime.pingedContainers = append(runtime.pingedContainers, container)
 	if operationContext.Err() != nil {
 		return 0, operationContext.Err()
@@ -73,6 +81,8 @@ func (runtime *fakeRuntime) forgetCalls() {
 	runtime.pingedContainers = nil
 	runtime.pingedTargets = nil
 	runtime.restartedContainers = nil
+	runtime.netcatContainers = nil
+	runtime.netcatTargets = nil
 }
 
 func (runtime *fakeRuntime) restartCount(container string) int {
@@ -101,12 +111,10 @@ func (controlAPI *fakeControlAPI) ForwardedPort(operationContext context.Context
 }
 
 type testBench struct {
-	runtime       *fakeRuntime
-	controlAPI    *fakeControlAPI
-	monitor       *Monitor
-	currentTime   time.Time
-	dialedAddress []string
-	dialError     error
+	runtime     *fakeRuntime
+	controlAPI  *fakeControlAPI
+	monitor     *Monitor
+	currentTime time.Time
 }
 
 func newBench(watched []config.Watched, inboundContainer string) *testBench {
@@ -124,11 +132,7 @@ func newBench(watched []config.Watched, inboundContainer string) *testBench {
 		FailThreshold:    2,
 		RiseThreshold:    2,
 	}
-	dial := func(operationContext context.Context, address string) error {
-		bench.dialedAddress = append(bench.dialedAddress, address)
-		return bench.dialError
-	}
-	bench.monitor = New(settings, bench.runtime, bench.controlAPI, dial,
+	bench.monitor = New(settings, bench.runtime, bench.controlAPI,
 		func() time.Time { return bench.currentTime },
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return bench
@@ -272,22 +276,25 @@ func TestSecondPingTargetUsedWhenFirstFails(testCase *testing.T) {
 
 func TestInboundFailureRestartsInboundContainer(testCase *testing.T) {
 	bench := newBench(singleApp(), "app")
-	bench.dialError = errors.New("connexion refusée")
+	bench.runtime.netcatExitCode = 1
 	bench.tick(2)
 	if bench.runtime.restartCount("app") != 1 {
 		testCase.Fatal("app aurait dû être redémarré après échecs entrants")
 	}
-	if len(bench.dialedAddress) == 0 || bench.dialedAddress[0] != "203.0.113.7:5914" {
-		testCase.Fatalf("adresse testée : %v", bench.dialedAddress)
+	if len(bench.runtime.netcatTargets) == 0 || bench.runtime.netcatTargets[0] != "203.0.113.7:5914" {
+		testCase.Fatalf("adresse testée : %v", bench.runtime.netcatTargets)
+	}
+	if bench.runtime.netcatContainers[0] != gluetunName {
+		testCase.Fatalf("nc doit partir du namespace de Gluetun : %v", bench.runtime.netcatContainers)
 	}
 }
 
 func TestInboundSkippedWhenNoForwardedPort(testCase *testing.T) {
 	bench := newBench(singleApp(), "app")
 	bench.controlAPI.portError = gluetun.ErrNoForwardedPort
-	bench.dialError = errors.New("connexion refusée")
+	bench.runtime.netcatExitCode = 1
 	bench.tick(5)
-	if len(bench.dialedAddress) != 0 || bench.runtime.restartCount("app") != 0 {
+	if len(bench.runtime.netcatTargets) != 0 || bench.runtime.restartCount("app") != 0 {
 		testCase.Fatal("sans port forwardé, le contrôle entrant est sauté")
 	}
 }
@@ -295,9 +302,9 @@ func TestInboundSkippedWhenNoForwardedPort(testCase *testing.T) {
 func TestInboundSkippedWhenControlAPIDown(testCase *testing.T) {
 	bench := newBench(singleApp(), "app")
 	bench.controlAPI.ipError = errors.New("API injoignable")
-	bench.dialError = errors.New("connexion refusée")
+	bench.runtime.netcatExitCode = 1
 	bench.tick(5)
-	if len(bench.dialedAddress) != 0 || bench.runtime.restartCount("app") != 0 || bench.runtime.restartCount(gluetunName) != 0 {
+	if len(bench.runtime.netcatTargets) != 0 || bench.runtime.restartCount("app") != 0 || bench.runtime.restartCount(gluetunName) != 0 {
 		testCase.Fatal("une API de contrôle injoignable ne déclenche aucun redémarrage")
 	}
 }
@@ -322,9 +329,9 @@ func TestMissingContainerNeverRestartedAndOthersStillChecked(testCase *testing.T
 func TestInboundSkippedWhenPublicIPEmpty(testCase *testing.T) {
 	bench := newBench(singleApp(), "app")
 	bench.controlAPI.publicIP = ""
-	bench.dialError = errors.New("connexion refusée")
+	bench.runtime.netcatExitCode = 1
 	bench.tick(5)
-	if len(bench.dialedAddress) != 0 || bench.runtime.restartCount("app") != 0 {
+	if len(bench.runtime.netcatTargets) != 0 || bench.runtime.restartCount("app") != 0 {
 		testCase.Fatal("une IP publique vide saute le contrôle entrant")
 	}
 }
@@ -485,5 +492,14 @@ func TestRestartSkippedWhenStateUnknown(testCase *testing.T) {
 	bench.tick(5)
 	if bench.runtime.restartCount("app") != 0 {
 		testCase.Fatal("état inconnu : pas de redémarrage")
+	}
+}
+
+func TestInboundNetcatMissingIsNotCounted(testCase *testing.T) {
+	bench := newBench(singleApp(), "app")
+	bench.runtime.netcatExitCode = 127
+	bench.tick(5)
+	if bench.runtime.restartCount("app") != 0 {
+		testCase.Fatal("un nc absent n'est pas une panne entrante")
 	}
 }

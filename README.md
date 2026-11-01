@@ -12,9 +12,7 @@ Quand Gluetun redémarre ou que son tunnel WireGuard tombe, les conteneurs qui p
 
 1. **Gluetun** : `ping` exécuté dans le conteneur Gluetun. Après `FAIL_THRESHOLD` échecs consécutifs, Gluetun est redémarré. Quand il répond `RISE_THRESHOLD` fois de suite (après son délai de grâce), tous les conteneurs surveillés sont redémarrés une fois ; un redémarrage refusé est retenté au contrôle suivant. Tant que Gluetun est absent ou arrêté, rien n'est contrôlé ni redémarré.
 2. **Conteneurs** : `ping` exécuté dans chaque conteneur surveillé (sortant), seulement si Gluetun répond.
-3. **Entrant** (facultatif) : connexion TCP vers `IP publique:port forwardé` de Gluetun. En cas d'échec, `INBOUND_CONTAINER` est redémarré. Sans port forwardé ou API de contrôle injoignable, le contrôle est sauté.
-
-Un conteneur arrêté à la main n'est jamais relancé : l'état est vérifié avant tout redémarrage, y compris celui de Gluetun.
+3. **Entrant** (facultatif) : `nc -z` exécuté dans le conteneur Gluetun, donc dans le namespace du VPN, vers `IP publique:port forwardé`. Le moniteur n'ouvre aucune connexion lui-même et rien ne sort hors du tunnel. En cas d'échec, `INBOUND_CONTAINER` est redémarré. Sans port forwardé, avec une API ou des fichiers illisibles, ou sans `nc` dans l'image, le contrôle est sauté.
 
 Après un redémarrage, la cible n'est plus testée pendant son délai de grâce.
 
@@ -54,6 +52,7 @@ Le moniteur utilise l'API Docker pour inspecter, exécuter (`exec`) et redémarr
 
 ## Limites
 
+- Le contrôle entrant part du tunnel vers l'IP publique du serveur VPN : il ne réussit que si le fournisseur renvoie ce trafic (retour par le même serveur). Si ce n'est pas le cas, il échoue en permanence et redémarre `INBOUND_CONTAINER` : ne pas définir `INBOUND_CONTAINER` dans ce cas.
 - Le binaire `ping` doit exister dans l'image de chaque conteneur surveillé ; sinon la sonde est ignorée et journalisée.
 - Un simple redémarrage suffit pour raccrocher un conteneur. Si Gluetun est recréé (nouvel identifiant), les conteneurs dépendants doivent être recréés par Compose.
 

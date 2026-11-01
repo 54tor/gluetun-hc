@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	pingBinaryMissingExitCode = 127
-	pingTimeoutSeconds        = "3"
+	binaryMissingExitCode = 127
+	pingTimeoutSeconds    = "3"
 )
 
 type probeResult int
@@ -37,7 +37,7 @@ func (monitor *Monitor) pingFrom(operationContext context.Context, container str
 			monitor.logger.Warn("exec impossible", "container", container, "error", execError)
 			return probeUnreachable
 		}
-		if exitCode == pingBinaryMissingExitCode {
+		if exitCode == binaryMissingExitCode {
 			monitor.logger.Error("ping absent de l'image, sonde ignorée", "container", container)
 			return probeUnsupported
 		}

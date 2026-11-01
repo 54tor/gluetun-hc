@@ -17,5 +17,3 @@ type ControlAPI interface {
 	PublicIP(operationContext context.Context) (string, error)
 	ForwardedPort(operationContext context.Context) (int, error)
 }
-
-type Dialer func(operationContext context.Context, address string) error

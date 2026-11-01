@@ -14,7 +14,6 @@ type Monitor struct {
 	settings       config.Config
 	runtime        Runtime
 	controlAPI     ControlAPI
-	dial           Dialer
 	now            func() time.Time
 	logger         *slog.Logger
 	gluetunTarget  *target
@@ -22,12 +21,11 @@ type Monitor struct {
 	execTimeout    time.Duration
 }
 
-func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, dial Dialer, now func() time.Time, logger *slog.Logger) *Monitor {
+func New(settings config.Config, runtime Runtime, controlAPI ControlAPI, now func() time.Time, logger *slog.Logger) *Monitor {
 	monitor := &Monitor{
 		settings:    settings,
 		runtime:     runtime,
 		controlAPI:  controlAPI,
-		dial:        dial,
 		now:         now,
 		logger:      logger,
 		execTimeout: defaultExecTimeout,
