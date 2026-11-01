@@ -79,6 +79,8 @@ Le moniteur utilise l'API Docker pour inspecter, exécuter (`exec`) et redémarr
 - Les expressions `-allowGET` et `-allowPOST` du proxy nomment les conteneurs autorisés (`gluetun`, `app`) : les adapter à `GLUETUN_CONTAINER` et `WATCHED`. Le proxy autorise aussi `GET /containers/json` (liste) pour la résolution des noms.
 - `GLUETUN_CONTAINER` et `WATCHED` acceptent un nom de conteneur ou un nom de service Compose (label `com.docker.compose.service`). Un nom de service est résolu dans le projet Compose du moniteur (lu depuis son propre conteneur, via son nom d'hôte, donc ne pas définir `hostname:` sur lui). Si le projet est inconnu et que le nom correspond à plusieurs conteneurs, il est refusé : utiliser le nom du conteneur. Les règles du proxy portent sur le nom réel du conteneur, d'où les `container_name` de l'exemple.
 - Le réseau `docker-proxy` est interne : le proxy n'est joignable que par le moniteur.
+- L'image tourne en utilisateur non-root (`65534`) : elle ne peut pas lire `/var/run/docker.sock`. Ne pas monter le socket dans `gluetun-hc` (erreur `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`) : passer par le proxy, avec `DOCKER_HOST: tcp://socket-proxy:2375`.
+- Pour intégrer le moniteur à un compose existant : ajouter le service `socket-proxy` (seul à monter le socket, en lecture seule), déclarer le réseau interne `docker-proxy`, rattacher `gluetun-hc` à `default` et `docker-proxy`, ajouter `depends_on: [socket-proxy]`, puis définir `DOCKER_HOST` et `DOCKER_GID`. Copier ces blocs depuis `compose.yaml`.
 
 ## Limites
 
