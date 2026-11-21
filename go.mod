@@ -6,8 +6,8 @@ require (
 	github.com/autobrr/go-qbittorrent v1.19.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/hekmon/transmissionrpc/v3 v3.1.0
-	github.com/moby/moby/api v1.56.1
-	github.com/moby/moby/client v0.6.2
+	github.com/moby/moby/api v1.57.0
+	github.com/moby/moby/client v0.6.3
 )
 
 require (
